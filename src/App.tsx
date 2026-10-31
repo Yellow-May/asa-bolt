@@ -73,7 +73,7 @@ const pageTitles = {
   booking: "Request a ride",
   history: "My requests",
   admin: "Admin portal",
-  location: "Request a location",
+  location: "Request a ride",
   status: "Ride details",
   missing: "Page not found",
 };
@@ -90,7 +90,7 @@ export function App() {
   }, [path]);
 
   return (
-    <div className="app-shell" onClick={handleLinkClick}>
+    <div className="app-shell public-site" onClick={handleLinkClick}>
       <a className="skip-link" href="#page-content">
         Skip to content
       </a>
@@ -111,12 +111,6 @@ export function App() {
           <a href="/my-requests" aria-current={route.page === "history" ? "page" : undefined}>
             My requests
           </a>
-          <a href="/request-location" aria-current={route.page === "location" ? "page" : undefined}>
-            Request a location
-          </a>
-          <a href="/admin" aria-current={route.page === "admin" ? "page" : undefined}>
-            Admin portal
-          </a>
         </nav>
       </header>
       <div id="page-content" ref={contentRef} tabIndex={-1}>
@@ -129,7 +123,7 @@ export function App() {
         >
           {route.page === "booking" && <BookingPage />}
           {route.page === "admin" && <OwnerDashboard onNavigate={navigate} />}
-          {route.page === "location" && <LocationRequestPage onNavigate={navigate} />}
+          {route.page === "location" && <LocationRequestPage />}
           {route.page === "history" && <MyRequestsPage />}
           {route.page === "status" && (
             <StatusPage key={route.token} token={route.token} onNavigate={navigate} />
@@ -147,7 +141,10 @@ export function App() {
         </Suspense>
       </div>
       <footer className="site-footer">
-        <span>{BRAND_CONFIG.name} · Eastern Nigeria</span>
+        <div className="footer-business">
+          <span>{BRAND_CONFIG.name} · Eastern Nigeria</span>
+          <address>{BRAND_CONFIG.businessAddress}</address>
+        </div>
         <span>Reliability in every mile</span>
       </footer>
     </div>

@@ -569,3 +569,96 @@ restart/lease recovery and reconnect. **79 tests passed across eleven files.** L
 diff checks passed. No real Google account access, email sends, builds/typecheck builds, deployment
 or subagents were used. Live Google authorization and create/reschedule/cancel checks await the
 owner's later configuration.
+
+## Customer booking UI refinement — 31 October 2026
+
+Authorized after Chrome review and research into Uber, Blacklane, Bolt and inDrive.
+Use one landing-page form with route and pickup time first, then the fare and email; retain the existing
+published routes, schedule windows, server pricing, rounding, one-offer negotiation, consent,
+pending approval, notifications, private status links, and request history. Place location
+requests on the existing separate page. Remove public admin links, replace the decorative hero
+with a compact introduction, and use readable interface typography and mobile layouts.
+
+Implemented a compact form with progressively revealed fare/contact fields, an optional offer,
+and expandable optional details. The priced submit action confirms the selected fare. Shared custom
+dropdowns and confirmation dialogs cover customer and admin actions. Mobile controls and typography
+scale down together; reason fields use multiline textareas. The shared shell fills the viewport,
+keeps the footer at the bottom of short pages, and shows the replaceable business address from
+`shared/config.ts`. Admin sign-in uses the same interface typography.
+
+Manual Chrome checks used an isolated in-memory preview with synthetic data and no configured
+notification providers. Checked route/day selection, a ₦6,100 quote, an ₦812 offer rounded to ₦850,
+saved pending request, inline validation, cancellation-dialog opening/Escape/focus return, and the
+landing layout at 375 px. Checked the latest footer/address and compact admin sign-in on desktop
+and at 375 × 667. Provider delivery and a full admin regression are outside these checks.
+Automated tests await the owner's post-manual approval. Permitted checks are formatting and ESLint;
+builds remain excluded.
+
+### Follow-up booking UX and map selection — 31 October 2026
+
+The owner's follow-up supersedes the separate location form and optional WhatsApp update controls.
+Use a simple date picker followed by time, show pickup notes in the main form, and let customers
+choose email or WhatsApp with one contact field. Scale checkboxes/radios to 14 px on mobile.
+Enter an unlisted pickup/destination within booking and send the complete trip for admin review
+without an automatic fare. The owner confirmed this review workflow and selected OpenStreetMap
+with Leaflet for a free pin picker requiring no API key.
+
+Implemented the shared booking route, custom entries, map picker, persistent review trip/pins/contact,
+idempotency, admin review queue and private history for both contact methods. The compatibility
+location URL opens booking with custom pickup selected. Pending reviews appear in the main admin
+Requests area, with confirmation before a review decision. Pin-only reviews keep catalogue
+publication separate; reviewing a route never confirms a ride or agrees a fare. Legacy email
+history and old update-consent/opt-out records remain supported. The map loads on demand and
+falls back to typed locations if its assets or tiles fail. OpenStreetMap attribution and tile
+referrer requirements are included; the production image policy allows only its tile host.
+
+Manual Chrome checks used synthetic contacts, an in-memory database and a fake delivery transport.
+Loaded maps at desktop and 375 × 667, selected two distinct pins, chose 2 Nov 2026 at 09:30,
+saved a pickup note with WhatsApp alone, and saw both pins in the saved confirmation, verified
+WhatsApp history and admin view. A configured Aba → Aba Road route quoted ₦3,100 and saved with
+email alone for 3 Nov at 10:00. Verified separate email/WhatsApp history sessions, inline required
+contact validation with focus, the combined admin queue and review confirmation dialog.
+No real email/WhatsApp messages were sent. Live WhatsApp delivery,
+production map loading and automated tests await their separate setup/approval; no builds,
+typecheck builds, automated regression runs or subagents were used.
+
+### Remembered contacts and admin review — 31 October 2026
+
+Remember the customer's selected email or WhatsApp number in localStorage after a successful booking
+or route review. Restore it in booking and the private-link request form. Keep it editable, allow
+switching methods, and provide Clear saved contact. Persist only the last successful contact;
+private-history access still requires verification. Guard browser storage failures so a saved request
+continues to display its confirmation even when storage is unavailable.
+
+Restore the existing admin token and open /admin on a fresh visit to the bare home URL. Preserve
+explicit customer/status/history links and Customer view navigation. Keep the server's eight-hour
+session validation and sign-out behavior. API restarts still invalidate its in-memory sessions.
+
+Reviewed all admin sections in a separate Chrome tab. The owner's pagination correction replaces
+the all-location list with a compact ten-row table, live search, visibility filtering, page counts
+and modal editing. It reuses the current owner snapshot and existing location-save endpoint.
+Detailed findings and manual-check scope are in ADMIN_UI_REVIEW.md.
+
+Manual preview checks confirmed email persistence after a normal booking, WhatsApp persistence after
+a route review, prefill on fresh visits, contact clearing across reload, and private history still
+requiring its verified session. Confirmed admin home redirect, Customer view, logout, re-login,
+location page navigation/search/edit-save and 375 × 667 layout. Synthetic booking acceptance and
+rejection saved the expected status/fare/reason. Fake transport captured notifications; real messages
+were not sent. Automated tests await approval; no builds or typecheck builds were run.
+
+### Directional location pricing simplification — 31 October 2026
+
+The owner's latest flow replaces the extra map-pricing buttons and form. Keep Add location as the
+creation action. Check two existing locations, choose Price route, drag their order, and edit or
+generate the directional price. Load a saved price immediately, or calculate the first price on open.
+Keep separate prices for each direction and preserve quoted booking snapshots. Use the existing modal,
+validation, pricing and server-only road-routing services. Selection persists across catalogue pages.
+
+Manual API checks in the isolated in-memory preview confirmed a forward price edited to ₦4,250
+while its reverse retained ₦252,400. A synthetic new route automatically generated ₦252,000 from
+246.95 km at the approved workbook rate; saving and reopening retained that price. Formatting and
+ESLint passed. After Chrome permission, manually checked the checkbox/drag UI on desktop and
+375 × 667 mobile emulation: cross-page/search selection, independent direction prices, edits,
+regeneration, initial automatic generation, and save/reopen all worked. Fixed initial dialog focus
+when loading disables the footer, and unified mouse/touch drag handles. Chrome showed no new console
+messages after reopening and dragging. No builds, automated tests or regression tests ran.

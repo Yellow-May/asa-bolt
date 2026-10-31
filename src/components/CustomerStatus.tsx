@@ -1,3 +1,4 @@
+import { ConfirmationDialog } from "./ConfirmationDialog";
 import { useCallback, useEffect, useState } from "react";
 import type { BookingAccessResponse } from "../../shared/contracts";
 import { apiFetch, cancelBooking, fetchBookingStatus } from "../api";
@@ -18,6 +19,12 @@ export function CustomerStatus({ token, onBack }: CustomerStatusProps) {
   const [phone, setPhone] = useState("");
   const [reason, setReason] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [showCancellation, setShowCancellation] = useState(false);
+  const handleOpenCancellation = useCallback(() => {
+    setError("");
+    setShowCancellation(true);
+  }, []);
+  const handleCloseCancellation = useCallback(() => setShowCancellation(false), []);
   const loadStatus = useCallback(async () => {
     try {
       setResult(await fetchBookingStatus(token));
@@ -37,6 +44,7 @@ export function CustomerStatus({ token, onBack }: CustomerStatusProps) {
         const updated = await cancelBooking(token, phone, reason, Boolean(result?.booking.email));
         setResult((current) => (current ? { ...current, booking: updated.booking } : current));
         setReason("");
+        setShowCancellation(false);
       } catch {
         setError(
           "Use the email or phone used for this request and give a short cancellation reason.",
@@ -85,12 +93,14 @@ export function CustomerStatus({ token, onBack }: CustomerStatusProps) {
               <dd>{formatDateTime(result.booking.pickupAt)}</dd>
             </div>
             <FareDetails booking={result.booking} />
-            <div>
-              <dt>Email updates</dt>
-              <dd>
-                <EmailDeliveryStatus booking={result.booking} />
-              </dd>
-            </div>
+            {result.booking.email && (
+              <div>
+                <dt>Email updates</dt>
+                <dd>
+                  <EmailDeliveryStatus booking={result.booking} />
+                </dd>
+              </div>
+            )}
           </dl>
           {result.booking.whatsappConsentAt && (
             <section>
@@ -169,30 +179,57 @@ export function CustomerStatus({ token, onBack }: CustomerStatusProps) {
             </a>
           )}
           {!["completed", "cancelled", "rejected"].includes(result.booking.status) && (
-            <form className="cancel-form" onSubmit={handleCancel}>
+            <div className="cancel-form">
               <h3>Need to cancel?</h3>
-              <label>
-                {result.booking.email ? "Request email" : "Booking phone"}
-                <input
-                  type={result.booking.email ? "email" : "tel"}
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                Reason
-                <input
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                  placeholder="Plans changed"
-                  required
-                />
-              </label>
-              <button className="button button-danger" type="submit" disabled={cancelling}>
-                {cancelling ? "Cancelling…" : "Cancel this booking"}
+              <button
+                className="button button-danger"
+                type="button"
+                disabled={cancelling}
+                onClick={handleOpenCancellation}
+              >
+                Cancel this booking
               </button>
-            </form>
+              <ConfirmationDialog
+                open={showCancellation}
+                title="Cancel this booking?"
+                description="Enter the booking email or phone and a reason to cancel this ride."
+                busy={cancelling}
+                error={error}
+                onClose={handleCloseCancellation}
+                footer={
+                  <button
+                    className="button button-danger"
+                    type="submit"
+                    form="cancel-booking"
+                    disabled={cancelling}
+                  >
+                    {cancelling ? "Cancelling…" : "Confirm cancellation"}
+                  </button>
+                }
+              >
+                <form id="cancel-booking" className="stack-form" onSubmit={handleCancel}>
+                  <label>
+                    {result.booking.email ? "Request email" : "Booking phone"}
+                    <input
+                      type={result.booking.email ? "email" : "tel"}
+                      value={phone}
+                      onChange={(event) => setPhone(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Reason
+                    <textarea
+                      rows={3}
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                      placeholder="Plans changed"
+                      required
+                    />
+                  </label>
+                </form>
+              </ConfirmationDialog>
+            </div>
           )}
         </section>
       )}

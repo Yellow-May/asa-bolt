@@ -4,6 +4,7 @@ import type {
   ConflictReview,
   BookingAccessResponse,
   BookingCreationInput,
+  ContactMethod,
   FarePreview,
   OfferPreview,
   FareRule,
@@ -84,28 +85,14 @@ export async function fetchCustomerSetup(): Promise<{
   routes: Pick<ServiceRoute, "id" | "originId" | "destinationId">[];
   availability: AvailableSchedule[];
 }> {
-  const dates = nextDates(8);
-  const [locations, routes, availability] = await Promise.all([
+  const [locations, routes] = await Promise.all([
     getLocations(),
     request<Pick<ServiceRoute, "id" | "originId" | "destinationId">[]>("/routes"),
-    Promise.all(dates.map((date) => getAvailability(date))),
   ]);
   return {
     locations,
     routes,
-    availability: availability
-      .filter((item) => item.available)
-      .flatMap((item) =>
-        item.windows.map((window) => ({
-          ...window,
-          label: new Date(`${item.date}T12:00:00Z`).toLocaleDateString("en-NG", {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-            timeZone: "Africa/Lagos",
-          }),
-        })),
-      ),
+    availability: [],
   };
 }
 
@@ -134,13 +121,9 @@ export async function cancelBooking(
   });
 }
 
-export async function createLocationRequest(input: {
-  requesterName: string;
-  phone: string;
-  locationName: string;
-  landmark: string;
-  mapsUrl: string;
-}): Promise<LocationRequest> {
+export async function createLocationRequest(
+  input: Omit<LocationRequest, "id" | "status" | "responseNote" | "createdAt">,
+): Promise<LocationRequest> {
   return request<LocationRequest>("/location-requests", { method: "POST", body: input });
 }
 
@@ -148,8 +131,11 @@ export const submitLocationRequest = createLocationRequest;
 
 export const apiFetch = request;
 
-export const requestHistoryLink = (email: string) =>
-  request<{ message: string }>("/history/link", { method: "POST", body: { email } });
+export const requestHistoryLink = (contact: string, contactMethod: ContactMethod = "email") =>
+  request<{ message: string }>("/history/link", {
+    method: "POST",
+    body: { contactMethod, [contactMethod === "email" ? "email" : "phone"]: contact },
+  });
 export const verifyHistoryLink = (token: string) =>
   request<{ expiresAt: number }>("/history/verify", { method: "POST", body: { token } });
 export const fetchRequestHistory = () => request<RequestHistory>("/history");

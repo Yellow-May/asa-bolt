@@ -1,41 +1,66 @@
-import { useEffect, useRef, useState } from "react";
-import { BRAND_CONFIG } from "../../shared/config";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AvailableSchedule,
   BookingAccessResponse,
+  LocationRequest,
+  MapPoint,
   FarePreview,
   OfferPreview,
   ServiceLocation,
   ServiceRoute,
 } from "../../shared/contracts";
-import { ApiError, createBooking, fetchFare, fetchCustomerSetup, previewPriceOffer } from "../api";
+import {
+  ApiError,
+  createBooking,
+  createLocationRequest,
+  getAvailability,
+  fetchFare,
+  fetchCustomerSetup,
+  previewPriceOffer,
+} from "../api";
 import { formatNaira } from "../format";
 import { BookingSummary } from "./BookingSummary";
-import { LocationRequestForm } from "./LocationRequestForm";
+import { BookingJourneyFields } from "./BookingJourneyFields";
+import { BookingFareFields } from "./BookingFareFields";
+import { BookingContactFields } from "./BookingContactFields";
+import { CUSTOM_LOCATION } from "../booking-form";
+import { useBookingContact } from "../useBookingContact";
+import { LocationReviewSummary } from "./LocationReviewSummary";
+import { locationReviewInput } from "../location-review";
+import { useBookingValidation } from "../useBookingValidation";
 import { Message } from "./Message";
 
-const emptyForm = {
-  email: "",
-  whatsappUpdates: false,
-  whatsappNumber: "",
-  originId: "",
-  destinationId: "",
-  pickupAt: "",
-  pickupNote: "",
-};
-
-export function CustomerPage() {
+export function CustomerPage({
+  initialCustomLocation = false,
+}: {
+  initialCustomLocation?: boolean;
+}) {
   const [routes, setRoutes] = useState<Pick<ServiceRoute, "id" | "originId" | "destinationId">[]>(
     [],
   );
   const [locations, setLocations] = useState<ServiceLocation[]>([]);
   const [availability, setAvailability] = useState<AvailableSchedule[]>([]);
-  const [form, setForm] = useState(emptyForm);
+  const { fieldErrors, handleBlur, handleChange, validate, resetValidation } =
+    useBookingValidation();
+  const {
+    form,
+    setForm,
+    savedContact,
+    storageError,
+    handleContactChange,
+    handleMethodChange,
+    rememberBookingContact,
+    handleForgetContact,
+    resetTrip,
+  } = useBookingContact(initialCustomLocation, resetValidation);
   const [fare, setFare] = useState<FarePreview>();
   const [result, setResult] = useState<BookingAccessResponse>();
+  const [locationResult, setLocationResult] = useState<LocationRequest>();
+  const [checkingDate, setCheckingDate] = useState(false);
+  const [dateError, setDateError] = useState("");
+  const dateRequestRef = useRef(0);
   const [loading, setLoading] = useState(true);
   const [quoting, setQuoting] = useState(false);
-  const [agreed, setAgreed] = useState(false);
   const [priceChoice, setPriceChoice] = useState<"accept" | "negotiate">("accept");
   const [offerAmount, setOfferAmount] = useState("");
   const [offerNote, setOfferNote] = useState("");
@@ -53,15 +78,7 @@ export function CustomerPage() {
   const keyRef = useRef(crypto.randomUUID());
   const submittingRef = useRef(false);
   const pickupDate = form.pickupAt.slice(0, 10);
-  const pickupTime = form.pickupAt.slice(11, 16);
-  const selectedSchedule =
-    availability.find(
-      (item) =>
-        item.date === pickupDate && pickupTime >= item.startTime && pickupTime < item.endTime,
-    ) ?? availability.find((item) => item.date === pickupDate);
-  const selectedLocations = locations.filter(
-    (location) => location.id === form.originId || location.id === form.destinationId,
-  );
+  const customTrip = form.originId === CUSTOM_LOCATION || form.destinationId === CUSTOM_LOCATION;
 
   useEffect(() => {
     let active = true;
@@ -91,6 +108,7 @@ export function CustomerPage() {
       !form.originId ||
       !form.destinationId ||
       !pickupDate ||
+      customTrip ||
       form.originId === form.destinationId
     )
       return;
@@ -105,7 +123,7 @@ export function CustomerPage() {
       .catch(() => {
         if (active)
           setFareError(
-            "This route is unavailable for the selected day. Choose another route or request a location below.",
+            "This route is unavailable for the selected day. Choose another route or day, or use Request a location.",
           );
       })
       .finally(() => {
@@ -114,7 +132,7 @@ export function CustomerPage() {
     return () => {
       active = false;
     };
-  }, [form.originId, form.destinationId, pickupDate]);
+  }, [form.originId, form.destinationId, pickupDate, customTrip]);
 
   useEffect(() => {
     if (priceChoice !== "negotiate" || !offerAmount.trim()) return;
@@ -141,78 +159,213 @@ export function CustomerPage() {
     };
   }, [offerAmount, priceChoice]);
 
-  function changeQuoteField(name: "originId" | "destinationId" | "pickupAt", value: string) {
-    setForm((current) => ({
-      ...current,
-      [name]: value,
-      ...(name === "originId" ? { destinationId: "" } : {}),
-    }));
-    setFare(undefined);
-    setAgreed(false);
-    setFareError("");
-    setError("");
-    setQuoting(false);
-  }
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (submittingRef.current || !fare || !agreed || !canSubmitPrice || !form.pickupAt) return;
-    submittingRef.current = true;
-    setSubmitting(true);
-    setError("");
-    try {
-      const booking = await createBooking({
-        ...form,
-        email: form.email.trim(),
-        pickupAt: new Date(`${form.pickupAt}:00+01:00`).toISOString(),
-        quotedAmountKobo: fare.amountKobo,
-        priceChoice,
-        ...(priceChoice === "negotiate" && offer
-          ? {
-              proposedAmountNaira: offerAmount,
-              proposedAmountKobo: offer.roundedAmountKobo,
-              negotiationNote: offerNote,
-            }
-          : {}),
-        idempotencyKey: keyRef.current,
-      });
-      setResult(booking);
-      window.scrollTo(0, 0);
-    } catch (failure) {
-      if (failure instanceof ApiError && failure.fare) {
-        setFare(failure.fare);
-        setAgreed(false);
-      } else if (failure instanceof ApiError && failure.offer) {
-        setOfferResult({ input: offerAmount, preview: failure.offer });
-        setAgreed(false);
-      } else if (failure instanceof ApiError && [400, 409].includes(failure.status)) {
+  const changeQuoteField = useCallback(
+    (name: "originId" | "destinationId" | "pickupAt", value: string) => {
+      setForm((current) => ({
+        ...current,
+        [name]: value,
+        ...(name === "originId" ? { destinationId: "" } : {}),
+        ...(name === "originId"
+          ? { originPin: undefined, destinationPin: undefined }
+          : name === "destinationId"
+            ? { destinationPin: undefined }
+            : {}),
+      }));
+      if (name !== "pickupAt" || value.slice(0, 10) !== pickupDate) {
         setFare(undefined);
-        setAgreed(false);
+        setFareError("");
+        setQuoting(false);
       }
-      setError(
-        failure instanceof Error
-          ? failure.message
-          : "We could not save this request. Please try again.",
-      );
-    } finally {
-      submittingRef.current = false;
-      setSubmitting(false);
-    }
-  }
+      setError("");
+    },
+    [pickupDate, setForm],
+  );
 
-  function handleNewBooking() {
+  const handleSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (submittingRef.current || !validate(event.currentTarget)) return;
+      const pickupTime = form.pickupAt.slice(11, 16);
+      if (
+        checkingDate ||
+        dateError ||
+        !availability.some(
+          (window) =>
+            window.date === pickupDate &&
+            pickupTime >= window.startTime &&
+            pickupTime < window.endTime,
+        )
+      ) {
+        setDateError("Choose an available pickup date and time.");
+        event.currentTarget.querySelector<HTMLInputElement>("#booking-schedule")?.focus();
+        return;
+      }
+      if (!customTrip && (!fare || !canSubmitPrice || !form.pickupAt)) {
+        setError(
+          !fare
+            ? "Choose your route and pickup day, then wait for your fare before sending."
+            : "Review your rounded offer and confirm the fare before sending.",
+        );
+        return;
+      }
+      submittingRef.current = true;
+      setSubmitting(true);
+      setError("");
+      try {
+        if (customTrip) {
+          const request = await createLocationRequest(
+            locationReviewInput(form, locations, keyRef.current),
+          );
+          rememberBookingContact(request);
+          setLocationResult(request);
+          window.scrollTo(0, 0);
+          return;
+        }
+        if (!fare) return;
+        const booking = await createBooking({
+          ...form,
+          email: form.contactMethod === "email" ? form.email.trim() : "",
+          phone: form.contactMethod === "whatsapp" ? form.whatsappNumber : "",
+          whatsappNumber: "",
+          pickupAt: new Date(`${form.pickupAt}:00+01:00`).toISOString(),
+          quotedAmountKobo: fare.amountKobo,
+          priceChoice,
+          ...(priceChoice === "negotiate" && offer
+            ? {
+                proposedAmountNaira: offerAmount,
+                proposedAmountKobo: offer.roundedAmountKobo,
+                negotiationNote: offerNote,
+              }
+            : {}),
+          idempotencyKey: keyRef.current,
+        });
+        rememberBookingContact(booking.booking);
+        setResult(booking);
+        window.scrollTo(0, 0);
+      } catch (failure) {
+        if (failure instanceof ApiError && failure.fare) {
+          setFare(failure.fare);
+        } else if (failure instanceof ApiError && failure.offer) {
+          setOfferResult({ input: offerAmount, preview: failure.offer });
+        }
+        setError(
+          failure instanceof Error
+            ? failure.message
+            : "We could not save this request. Please try again.",
+        );
+      } finally {
+        submittingRef.current = false;
+        setSubmitting(false);
+      }
+    },
+    [
+      validate,
+      rememberBookingContact,
+      checkingDate,
+      dateError,
+      availability,
+      pickupDate,
+      customTrip,
+      fare,
+      canSubmitPrice,
+      form,
+      locations,
+      priceChoice,
+      offer,
+      offerAmount,
+      offerNote,
+    ],
+  );
+
+  const handleNewBooking = useCallback(() => {
     setResult(undefined);
-    setForm(emptyForm);
+    setLocationResult(undefined);
+    resetTrip();
     setPriceChoice("accept");
     setOfferAmount("");
     setOfferNote("");
     setOfferResult(undefined);
     setFare(undefined);
-    setAgreed(false);
     setError("");
+    setDateError("");
     keyRef.current = crypto.randomUUID();
-  }
+    resetValidation();
+  }, [resetValidation, resetTrip]);
 
+  const handleCustomChange = useCallback(
+    (name: "customOrigin" | "customDestination" | "pickupNote", value: string) => {
+      setForm((current) => ({ ...current, [name]: value }));
+    },
+    [setForm],
+  );
+  const handlePinChange = useCallback(
+    (name: "originPin" | "destinationPin", point: MapPoint) => {
+      setForm((current) => ({
+        ...current,
+        [name]: point,
+        ...(name === "originPin"
+          ? {
+              originId: CUSTOM_LOCATION,
+              customOrigin:
+                current.customOrigin ||
+                locations.find((location) => location.id === current.originId)?.name ||
+                "Pinned pickup",
+            }
+          : {
+              destinationId: CUSTOM_LOCATION,
+              customDestination:
+                current.customDestination ||
+                locations.find((location) => location.id === current.destinationId)?.name ||
+                "Pinned destination",
+            }),
+      }));
+      setFare(undefined);
+      setFareError("");
+      setError("");
+    },
+    [locations, setForm],
+  );
+  const handleDateChange = useCallback(
+    async (date: string) => {
+      const request = ++dateRequestRef.current;
+      changeQuoteField("pickupAt", date ? `${date}T` : "");
+      setDateError("");
+      setAvailability([]);
+      setCheckingDate(Boolean(date));
+      if (!date) return;
+      try {
+        const result = await getAvailability(date);
+        if (request !== dateRequestRef.current) return;
+        setAvailability(result.available ? result.windows : []);
+        if (!result.available) setDateError("No pickups available on this date.");
+      } catch {
+        if (request === dateRequestRef.current)
+          setDateError("Could not load pickup hours. Choose the date again.");
+      } finally {
+        if (request === dateRequestRef.current) setCheckingDate(false);
+      }
+    },
+    [changeQuoteField],
+  );
+  const handleTimeChange = useCallback(
+    (value: string) => {
+      setForm((current) => ({ ...current, pickupAt: `${current.pickupAt.slice(0, 10)}T${value}` }));
+      setDateError("");
+    },
+    [setForm],
+  );
+  const handlePriceChoice = useCallback((value: "accept" | "negotiate") => {
+    setPriceChoice(value);
+  }, []);
+  const handleOfferAmount = useCallback((value: string) => {
+    setOfferAmount(value);
+    setOfferResult(undefined);
+  }, []);
+  const handleOfferNote = useCallback((value: string) => setOfferNote(value), []);
+  const handleRetry = useCallback(() => window.location.reload(), []);
+
+  if (locationResult)
+    return <LocationReviewSummary request={locationResult} onNewBooking={handleNewBooking} />;
   if (result)
     return (
       <main className="narrow-page">
@@ -225,364 +378,110 @@ export function CustomerPage() {
     );
   return (
     <main className="customer-shell">
-      <section className="hero-panel">
-        <div className="eyebrow">{BRAND_CONFIG.city}, made simpler</div>
-        <h1>
-          Move with
-          <br />
-          <em>local confidence.</em>
-        </h1>
-        <p>
-          Request a local ride with your email. Review the fare, then wait for the admin to accept
-          your request.
-        </p>
-        <div className="hero-stamp">
-          AR <span>No signup needed</span>
-        </div>
-      </section>
-      <section className="booking-panel" aria-labelledby="book-title">
-        <div className="eyebrow">Request a ride</div>
-        <h2 id="book-title">Where are you headed?</h2>
-        {loading && <Message tone="info">Loading available routes and pickup times…</Message>}
-        {error && <Message tone="error">{error}</Message>}
-        {!loading && !error && routes.length === 0 && (
-          <Message tone="info">
-            No routes are published yet. You can request a location below.
-          </Message>
+      <header className="booking-intro">
+        {initialCustomLocation && (
+          <a className="booking-back" href="/" aria-label="Back to booking">
+            ←
+          </a>
         )}
-        {!loading && routes.length > 0 && (
-          <form className="stack-form" onSubmit={handleSubmit}>
-            <label>
-              Email address
-              <input
-                type="email"
-                name="email"
-                autoComplete="email"
-                maxLength={254}
-                value={form.email}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, email: event.target.value }))
-                }
-                required
-                disabled={submitting}
-              />
-            </label>
-            <p className="form-help">
-              We’ll email your receipt and the admin’s decision. No account or password needed.
-              Unanswered requests are automatically rejected at pickup time.
-            </p>
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={form.whatsappUpdates}
-                disabled={submitting}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    whatsappUpdates: event.target.checked,
-                    whatsappNumber: event.target.checked ? current.whatsappNumber : "",
-                  }))
-                }
-              />
-              Also send me WhatsApp updates for this ride (optional)
-            </label>
-            {form.whatsappUpdates && (
-              <div>
-                <label>
-                  WhatsApp number
-                  <input
-                    type="tel"
-                    aria-describedby="whatsapp-consent-help"
-                    autoComplete="tel"
-                    maxLength={20}
-                    placeholder="+234…"
-                    required
-                    disabled={submitting}
-                    value={form.whatsappNumber}
-                    onChange={(event) =>
-                      setForm((current) => ({ ...current, whatsappNumber: event.target.value }))
-                    }
-                  />
-                </label>
-                <p className="form-help" id="whatsapp-consent-help">
-                  I agree to receive booking updates and private ride links at this number. Email
-                  remains the main channel. WhatsApp updates require the service to be connected.
-                </p>
-              </div>
-            )}
-            <label>
-              Pickup location
-              <select
-                name="originId"
-                value={form.originId}
-                onChange={(event) => changeQuoteField("originId", event.target.value)}
-                required
-                disabled={submitting}
-              >
-                <option value="">Choose a published location</option>
-                {locations
-                  .filter((location) => routes.some((route) => route.originId === location.id))
-                  .map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Destination
-              <select
-                name="destinationId"
-                value={form.destinationId}
-                onChange={(event) => changeQuoteField("destinationId", event.target.value)}
-                required
-                disabled={submitting}
-              >
-                <option value="">Choose a destination</option>
-                {locations
-                  .filter((location) =>
-                    routes.some(
-                      (route) =>
-                        route.originId === form.originId && route.destinationId === location.id,
-                    ),
-                  )
-                  .map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {location.name}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            {selectedLocations.length > 0 && (
-              <div className="map-links">
-                {selectedLocations.map(
-                  (location) =>
-                    location.mapsUrl && (
-                      <a key={location.id} href={location.mapsUrl} target="_blank" rel="noreferrer">
-                        Open {location.name} in Google Maps ↗
-                      </a>
-                    ),
-                )}
-              </div>
-            )}
-            <fieldset disabled={submitting}>
-              <legend>Available pickup days</legend>
-              {availability.length === 0 && (
-                <Message tone="info">
-                  No pickup times are available right now. Please check back later.
-                </Message>
-              )}
-              <div className="schedule-grid">
-                {availability.map((item) => (
-                  <label
-                    className={`schedule-option ${pickupDate === item.date && pickupTime >= item.startTime && pickupTime < item.endTime ? "selected" : ""}`}
-                    key={`${item.date}-${item.startTime}`}
-                  >
-                    <input
-                      type="radio"
-                      name="schedule"
-                      value={`${item.date}|${item.startTime}`}
-                      checked={
-                        pickupDate === item.date &&
-                        pickupTime >= item.startTime &&
-                        pickupTime < item.endTime
-                      }
-                      onChange={() =>
-                        changeQuoteField("pickupAt", `${item.date}T${item.startTime}`)
-                      }
-                    />
-                    <span>{item.label}</span>
-                    <small>
-                      {item.startTime} – {item.endTime}
-                    </small>
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <label>
-              Pickup time (Nigeria)
-              <input
-                type="time"
-                name="pickupAt"
-                value={form.pickupAt.slice(11, 16)}
-                min={selectedSchedule?.startTime}
-                max={
-                  selectedSchedule
-                    ? new Date(
-                        new Date(`2000-01-01T${selectedSchedule.endTime}:00Z`).getTime() - 60_000,
-                      )
-                        .toISOString()
-                        .slice(11, 16)
-                    : undefined
-                }
-                disabled={!pickupDate || submitting}
-                onChange={(event) => {
-                  const time = event.currentTarget.value;
-                  setForm((current) => ({ ...current, pickupAt: `${pickupDate}T${time}` }));
-                }}
-                required
-              />
-            </label>
-            {quoting && <Message tone="info">Calculating your fare…</Message>}
-            {fareError && <Message tone="error">{fareError}</Message>}
-            {fare && (
-              <div className="fare-preview">
-                <span>Quoted fare</span>
-                <strong>{formatNaira(fare.amountKobo)}</strong>
-                <small>Your ride stays pending until the admin accepts.</small>
-              </div>
-            )}
-            {fare && (
-              <>
-                <fieldset className="price-choice" disabled={submitting}>
-                  <legend>Choose your price</legend>
-                  <label className="price-choice-option">
-                    <input
-                      type="radio"
-                      name="priceChoice"
-                      value="accept"
-                      checked={priceChoice === "accept"}
-                      onChange={() => {
-                        setPriceChoice("accept");
-                        setAgreed(false);
-                      }}
-                    />
-                    Accept price · {formatNaira(fare.amountKobo)}
-                  </label>
-                  <label className="price-choice-option">
-                    <input
-                      type="radio"
-                      name="priceChoice"
-                      value="negotiate"
-                      checked={priceChoice === "negotiate"}
-                      onChange={() => {
-                        setPriceChoice("negotiate");
-                        setAgreed(false);
-                      }}
-                    />
-                    Negotiate price
-                  </label>
-                </fieldset>
-                {priceChoice === "negotiate" && (
-                  <div className="offer-form">
-                    <p>
-                      Make one offer for this request. The admin can accept or reject it. You can
-                      make a new request after rejection.
-                    </p>
-                    <label>
-                      Your offer (₦)
-                      <input
-                        inputMode="decimal"
-                        value={offerAmount}
-                        onChange={(event) => {
-                          setOfferAmount(event.target.value);
-                          setOfferResult(undefined);
-                          setAgreed(false);
-                        }}
-                        disabled={submitting}
-                        required
-                        maxLength={32}
-                        placeholder="For example, 812"
-                      />
-                    </label>
-                    <div className="offer-preview" aria-live="polite">
-                      {offer ? (
-                        <>
-                          <strong>Offer to send: {formatNaira(offer.roundedAmountKobo)}</strong>
-                          <p>
-                            ₦{offer.amountNaira} rounds up to {formatNaira(offer.roundedAmountKobo)}
-                            . This will be your agreed fare if accepted.
-                          </p>
-                        </>
-                      ) : offerError ? (
-                        <p>{offerError}</p>
-                      ) : (
-                        <p>
-                          {offerAmount.trim()
-                            ? "Calculating your rounded offer…"
-                            : "Enter an amount to preview your rounded offer."}
-                        </p>
-                      )}
-                    </div>
-                    <label>
-                      Negotiation note <span className="muted">(optional)</span>
-                      <textarea
-                        rows={2}
-                        maxLength={240}
-                        value={offerNote}
-                        onChange={(event) => setOfferNote(event.target.value)}
-                        disabled={submitting}
-                        placeholder="A short note for the admin"
-                      />
-                    </label>
-                  </div>
-                )}
-                <label className="checkbox-label">
-                  <input
-                    type="checkbox"
-                    checked={agreed}
-                    disabled={submitting || !canSubmitPrice}
-                    onChange={(event) => setAgreed(event.target.checked)}
-                    required
-                  />
-                  <span>
-                    {priceChoice === "accept"
-                      ? `I agree to the quoted fare of ${formatNaira(fare.amountKobo)}.`
-                      : offer
-                        ? `Send my one offer of ${formatNaira(offer.roundedAmountKobo)} for admin approval.`
-                        : "Review your rounded offer before sending."}
-                  </span>
-                </label>
-              </>
-            )}
-
-            <label>
-              Pickup note <span className="muted">(optional)</span>
-              <textarea
-                name="pickupNote"
-                rows={2}
-                maxLength={240}
-                disabled={submitting}
-                value={form.pickupNote}
-                onChange={(event) =>
-                  setForm((current) => ({ ...current, pickupNote: event.target.value }))
-                }
-                placeholder="A landmark or pickup detail"
-              />
-            </label>
-            <button
-              className="button button-primary button-wide"
-              type="submit"
-              disabled={!fare || !agreed || !canSubmitPrice || submitting}
-            >
-              {submitting
-                ? "Sending request…"
-                : priceChoice === "negotiate"
-                  ? "Send offer & ride request"
-                  : "Send ride request"}
+        <h1>Where are you headed?</h1>
+      </header>
+      <div className="booking-layout">
+        <section className="booking-panel" aria-label="Request a ride">
+          {loading && <Message tone="info">Loading available routes and pickup times…</Message>}
+          {error && <Message tone="error">{error}</Message>}
+          {!loading && error && routes.length === 0 && (
+            <button className="button button-secondary" type="button" onClick={handleRetry}>
+              Try again
             </button>
-          </form>
-        )}
-      </section>
-      <section className="trust-strip">
-        <span>01 / No signup</span>
-        <span>02 / Clear fares</span>
-        <span>03 / Admin approval</span>
-      </section>
-      <section className="request-panel">
-        <div>
-          <div className="eyebrow">Can’t see your place?</div>
-          <h2>Put it on the map.</h2>
-          <p>
-            Tell us the spot and a nearby landmark. Approved locations become available for future
-            rides.
-          </p>
-        </div>
-        <LocationRequestForm />
-      </section>
-      <a className="owner-link" href="/admin">
-        Admin portal →
-      </a>
+          )}
+          {!loading && (!error || locations.length > 0) && (
+            <form
+              className="booking-form"
+              onSubmit={handleSubmit}
+              onBlur={handleBlur}
+              onChange={handleChange}
+              noValidate
+              aria-busy={submitting}
+            >
+              <BookingJourneyFields
+                form={form}
+                locations={locations}
+                routes={routes}
+                availability={availability}
+                checkingDate={checkingDate}
+                dateError={dateError}
+                submitting={submitting}
+                errors={fieldErrors}
+                onQuoteChange={changeQuoteField}
+                onTimeChange={handleTimeChange}
+                onCustomChange={handleCustomChange}
+                onDateChange={handleDateChange}
+                onPinChange={handlePinChange}
+              />
+              {!customTrip && (fare || quoting || fareError) && (
+                <BookingFareFields
+                  fare={fare}
+                  quoting={quoting}
+                  fareError={fareError}
+                  priceChoice={priceChoice}
+                  offerAmount={offerAmount}
+                  offerNote={offerNote}
+                  offer={offer}
+                  offerError={offerError}
+                  submitting={submitting}
+                  errors={fieldErrors}
+                  onPriceChoice={handlePriceChoice}
+                  onOfferAmount={handleOfferAmount}
+                  onOfferNote={handleOfferNote}
+                />
+              )}
+              {customTrip && (
+                <p className="field-help">
+                  The admin will review this route. A fare will be provided separately.
+                </p>
+              )}
+              {(fare || customTrip) && (
+                <BookingContactFields
+                  form={form}
+                  submitting={submitting}
+                  errors={fieldErrors}
+                  onChange={handleContactChange}
+                  onMethodChange={handleMethodChange}
+                  savedContact={Boolean(savedContact)}
+                  storageError={storageError}
+                  onForgetContact={handleForgetContact}
+                />
+              )}
+              <div className="booking-submit">
+                {fare && (
+                  <p className="field-help">
+                    Your request needs confirmation. Unanswered requests expire at pickup time.
+                  </p>
+                )}
+                <button
+                  className="button button-primary button-wide"
+                  type="submit"
+                  disabled={submitting}
+                >
+                  {submitting
+                    ? "Sending request…"
+                    : customTrip
+                      ? "Send for review"
+                      : fare
+                        ? priceChoice === "negotiate"
+                          ? `Send offer · ${offer ? formatNaira(offer.roundedAmountKobo) : "review amount"}`
+                          : `Request ride · ${formatNaira(fare.amountKobo)}`
+                        : quoting
+                          ? "Getting fare…"
+                          : "See fare"}{" "}
+                  <span aria-hidden="true">→</span>
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
+      </div>
     </main>
   );
 }

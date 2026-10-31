@@ -30,6 +30,7 @@ import { koboToNaira, roundNairaUpTo50 } from "./domain/pricing.js";
 import { previewOffer } from "./domain/offers.js";
 import { findRideConflicts } from "../shared/scheduling.js";
 import { HttpError } from "./errors.js";
+import { contactIdentity, contactMethod } from "./domain/contact.js";
 import type { GoogleCalendar } from "./calendar.js";
 
 export class BookingApplication {
@@ -106,14 +107,19 @@ export class BookingApplication {
   }
 
   async createBooking(input: BookingCreationInput): Promise<BookingAccessResponse> {
-    const email = normalizeEmail(input.email ?? "");
+    const method = contactMethod(input.contactMethod ?? (input.email ? "email" : "whatsapp"));
+    const identity = contactIdentity(
+      method,
+      method === "email" ? (input.email ?? "") : (input.phone ?? input.whatsappNumber ?? ""),
+    );
     const existing = this.repository.findBookingByIdempotency(input.idempotencyKey);
     if (existing) {
-      if (existing.email !== email)
+      const existingIdentity = existing.email || `whatsapp:${existing.phone}`;
+      if (existingIdentity !== identity)
         throw new HttpError(409, "Start a new request with a new booking key.");
       return this.accessResponse(existing);
     }
-    const record = this.buildBookingRecord(input);
+    const record = this.buildBookingRecord({ ...input, contactMethod: method });
     this.repository.createBookingRequest(record, () => {
       this.email?.queueBooking(this.repository.toBooking(record), "request.received");
       this.whatsapp?.queueBooking(this.repository.toBooking(record), "request.received");
@@ -305,7 +311,20 @@ export class BookingApplication {
   createLocationRequest(
     input: Omit<LocationRequest, "id" | "status" | "responseNote" | "createdAt">,
   ): LocationRequest {
-    return this.repository.createLocationRequest({ ...input, phone: normalizePhone(input.phone) });
+    const email = input.email?.trim() ? normalizeEmail(input.email) : "";
+    const phone = email ? "" : normalizePhone(input.phone);
+    const trip = input.trip;
+    if (trip) {
+      if (trip.customLocations?.some((name) => ![trip.origin, trip.destination].includes(name)))
+        throw new HttpError(
+          400,
+          "Requested locations must match the trip's pickup or destination.",
+        );
+      this.requireOpenFuture(parsePickupTime(trip.pickupAt));
+      if (trip.origin === trip.destination)
+        throw new HttpError(400, "Choose different pickup and destination locations.");
+    }
+    return this.repository.createLocationRequest({ ...input, email, phone });
   }
 
   reviewLocationRequest(id: string, status: RequestStatus, responseNote: string): LocationRequest {
@@ -363,10 +382,20 @@ export class BookingApplication {
       accessToken: randomUUID(),
       idempotencyKey: input.idempotencyKey,
       customerName: input.customerName?.trim().slice(0, 80) ?? "",
-      phone: input.phone?.trim() ? normalizePhone(input.phone) : "",
+      phone:
+        input.contactMethod === "whatsapp"
+          ? normalizePhone(input.phone || input.whatsappNumber || "")
+          : input.phone?.trim()
+            ? normalizePhone(input.phone)
+            : "",
       whatsappNumber: input.whatsappUpdates ? normalizePhone(input.whatsappNumber ?? "") : "",
       whatsappConsentAt: input.whatsappUpdates ? now : "",
-      email: normalizeEmail(input.email ?? ""),
+      email:
+        input.contactMethod === "whatsapp"
+          ? ""
+          : input.email?.trim()
+            ? normalizeEmail(input.email)
+            : "",
       rejectionReason: "",
       originId: origin.id,
       destinationId: destination.id,

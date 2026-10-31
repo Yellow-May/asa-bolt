@@ -19,7 +19,7 @@ export function BookingSummary({ booking, statusUrl, onNewBooking }: BookingSumm
       </h1>
       <Message tone="success">
         {booking.status === "requested"
-          ? "Your request is saved. Your ride is confirmed only after the admin accepts it. Unanswered requests are automatically rejected at pickup time."
+          ? "Your ride needs acceptance. Check your private request details for the decision."
           : "Check the current decision in your request details."}
       </Message>
       <div className="reference">{booking.reference}</div>
@@ -41,12 +41,14 @@ export function BookingSummary({ booking, statusUrl, onNewBooking }: BookingSumm
             {booking.origin.name} <span aria-hidden="true">→</span> {booking.destination.name}
           </dd>
         </div>
-        <div>
-          <dt>Email updates</dt>
-          <dd>
-            <EmailDeliveryStatus booking={booking} />
-          </dd>
-        </div>
+        {booking.email && (
+          <div>
+            <dt>Email updates</dt>
+            <dd>
+              <EmailDeliveryStatus booking={booking} />
+            </dd>
+          </div>
+        )}
       </dl>
       <div className="action-row">
         <a className="button button-primary" href={statusUrl}>
@@ -57,7 +59,7 @@ export function BookingSummary({ booking, statusUrl, onNewBooking }: BookingSumm
         Request another ride
       </button>
       <p>
-        <a href="/my-requests">View all my requests by email</a>
+        <a href="/my-requests">View all my requests</a>
       </p>
     </section>
   );

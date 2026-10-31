@@ -196,6 +196,15 @@ export class Repository {
     return rows.map((row) => this.toBooking(row as Row));
   }
 
+  listBookingsByPhone(phone: string): Booking[] {
+    return this.database.connection
+      .prepare(
+        "SELECT * FROM bookings WHERE phone = ? OR whatsapp_number = ? ORDER BY created_at DESC, rowid DESC",
+      )
+      .all(phone, phone)
+      .map((row) => this.toBooking(row as Row));
+  }
+
   updateBookingStatus(
     id: string,
     status: BookingStatus,
@@ -429,11 +438,22 @@ export class Repository {
   createLocationRequest(
     input: Omit<LocationRequest, "id" | "status" | "responseNote" | "createdAt">,
   ): LocationRequest {
+    if (input.idempotencyKey) {
+      const existing = this.database.connection
+        .prepare("SELECT * FROM location_requests WHERE idempotency_key = ?")
+        .get(input.idempotencyKey);
+      if (existing) {
+        const request = toLocationRequest(existing as Row);
+        if ((request.email ?? "") !== (input.email ?? "") || request.phone !== input.phone)
+          throw new HttpError(409, "Start a new request with a new request key.");
+        return request;
+      }
+    }
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     this.database.connection
       .prepare(
-        "INSERT INTO location_requests (id, requester_name, phone, location_name, landmark, maps_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO location_requests (id, requester_name, phone, location_name, landmark, maps_url, created_at, email, trip_details, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         id,
@@ -443,6 +463,9 @@ export class Repository {
         input.landmark,
         input.mapsUrl,
         createdAt,
+        input.email ?? "",
+        input.trip ? JSON.stringify(input.trip) : "",
+        input.idempotencyKey ?? "",
       );
     return {
       ...input,
@@ -475,7 +498,18 @@ export class Repository {
     this.database.connection
       .prepare("UPDATE location_requests SET status = ?, response_note = ? WHERE id = ?")
       .run(status, responseNote, id);
-    if (status === "approved") this.publishRequestedLocation(request);
+    if (status === "approved") {
+      const names = toLocationRequest(request).trip?.customLocations;
+      if (names?.length)
+        names.forEach((name, index) =>
+          this.publishRequestedLocation({
+            ...request,
+            id: `${String(request.id)}-${index}`,
+            location_name: name,
+          }),
+        );
+      else if (!toLocationRequest(request).trip) this.publishRequestedLocation(request);
+    }
   }
 
   saveSchedule(input: OperatingSchedule): void {
@@ -638,6 +672,10 @@ function toLocationRequest(row: Row): LocationRequest {
     id: String(row.id),
     requesterName: String(row.requester_name),
     phone: String(row.phone),
+    email: String(row.email ?? ""),
+    trip: row.trip_details
+      ? (JSON.parse(String(row.trip_details)) as LocationRequest["trip"])
+      : undefined,
     locationName: String(row.location_name),
     landmark: String(row.landmark),
     mapsUrl: String(row.maps_url),

@@ -188,10 +188,42 @@ export interface Booking {
   events: BookingStatusEvent[];
 }
 
+export type ContactMethod = "email" | "whatsapp";
+
+export interface MapPoint {
+  latitude: number;
+  longitude: number;
+}
+
+export interface RoadDistance {
+  distanceKm: string;
+  provider: "openrouteservice" | "catalogue";
+  calculatedAt: string;
+}
+
+export interface RoutePricePreview {
+  fare: FarePreview;
+  previousAmountKobo?: number;
+  calculated: boolean;
+}
+
+export interface LocationRequestTrip {
+  origin: string;
+  destination: string;
+  pickupAt: string;
+  pickupNote: string;
+  customLocations?: string[];
+  originPin?: MapPoint;
+  destinationPin?: MapPoint;
+}
+
 export interface LocationRequest {
   id: string;
   requesterName: string;
   phone: string;
+  email?: string;
+  trip?: LocationRequestTrip;
+  idempotencyKey?: string;
   locationName: string;
   landmark: string;
   mapsUrl: string;
@@ -201,6 +233,7 @@ export interface LocationRequest {
 }
 
 export interface BookingCreationInput {
+  contactMethod?: ContactMethod;
   idempotencyKey: string;
   customerName?: string;
   phone?: string;
@@ -232,6 +265,9 @@ export interface OwnerSession {
 
 export interface RequestHistory {
   email: string;
+  contact?: string;
+  contactMethod?: ContactMethod;
+  locationRequests?: LocationRequest[];
   bookings: Booking[];
   expiresAt: number;
 }

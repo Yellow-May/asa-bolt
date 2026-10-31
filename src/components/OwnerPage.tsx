@@ -9,7 +9,9 @@ import type {
   ServiceLocation,
 } from "../../shared/contracts";
 import { ApiError, apiFetch, type OwnerSnapshot } from "../api";
-import { statusLabel } from "../format";
+import { forgetOwnerToken, readOwnerToken, rememberOwnerToken } from "../owner-session";
+import { LocationsPanel } from "./LocationsPanel";
+import { LocationRequestsPanel } from "./LocationRequestsPanel";
 import { PricingPanel } from "./PricingPanel";
 import { RequestsPanel } from "./RequestsPanel";
 import { SchedulingPanel } from "./SchedulingPanel";
@@ -22,17 +24,8 @@ interface OwnerPageProps {
 }
 type OwnerTab =
   "queue" | "schedule" | "locations" | "fares" | "requests" | "notifications" | "calendar";
-const defaultLocation = {
-  id: "new",
-  name: "",
-  landmark: "",
-  mapsUrl: "",
-  coordinates: "",
-  published: false,
-};
-
 export function OwnerPage({ onBack }: OwnerPageProps) {
-  const [token, setToken] = useState(() => localStorage.getItem("asa-bolt-owner-token") ?? "");
+  const [token, setToken] = useState(readOwnerToken);
   const [password, setPassword] = useState("");
   const [snapshot, setSnapshot] = useState<OwnerSnapshot>();
   const [tab, setTab] = useState<OwnerTab>(() =>
@@ -44,7 +37,6 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const [selectedRequestId, setSelectedRequestId] = useState("");
-  const [location, setLocation] = useState(defaultLocation);
   const loadSnapshot = useCallback(async (sessionToken: string) => {
     try {
       const headers = { Authorization: `Bearer ${sessionToken}` };
@@ -63,7 +55,7 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
         setError("Your admin session has ended. Sign in again.");
         setToken("");
         setSnapshot(undefined);
-        localStorage.removeItem("asa-bolt-owner-token");
+        forgetOwnerToken();
       } else setError("Could not refresh the admin data. Check your connection and try Refresh.");
     }
   }, []);
@@ -89,7 +81,8 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
         method: "POST",
         body: { password },
       });
-      localStorage.setItem("asa-bolt-owner-token", result.token);
+      if (!rememberOwnerToken(result.token))
+        setNotice("You are signed in, but this browser could not remember your session.");
       setToken(result.token);
       setPassword("");
     } catch (failure) {
@@ -117,7 +110,7 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
       lock.current = false;
       setBusy(false);
     }
-    localStorage.removeItem("asa-bolt-owner-token");
+    forgetOwnerToken();
     setToken("");
     setSnapshot(undefined);
     setNotice("");
@@ -137,38 +130,16 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
           status,
           responseNote:
             status === "approved"
-              ? "Location published. A served route and price are still required for booking."
-              : "Not added to served locations.",
+              ? "Route reviewed. Contact the admin to confirm the fare and ride."
+              : "This route request was declined.",
         },
       });
       await loadSnapshot(token);
-      setNotice(`Location request ${status}.`);
+      setNotice(`Route review ${status}.`);
     } catch (failure) {
       setError(
         failure instanceof Error ? failure.message : "Could not review this location request.",
       );
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
-  }
-  async function handleLocationSave(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!token || lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      await apiFetch(`/owner/locations/${location.id}`, {
-        method: "PATCH",
-        headers: { Authorization: `Bearer ${token}` },
-        body: location,
-      });
-      setLocation(defaultLocation);
-      await loadSnapshot(token);
-      setNotice("Location saved.");
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not save this location.");
     } finally {
       lock.current = false;
       setBusy(false);
@@ -263,14 +234,26 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
       {snapshot && (
         <>
           {tab === "queue" && (
-            <RequestsPanel
-              token={token}
-              bookings={bookings}
-              schedules={snapshot.schedules}
-              exceptions={snapshot.exceptions}
-              selectedId={selectedRequestId}
-              onSaved={() => loadSnapshot(token)}
-            />
+            <>
+              {snapshot.requests.some(
+                (request) => request.trip && request.status === "pending",
+              ) && (
+                <LocationRequestsPanel
+                  requests={snapshot.requests.filter(
+                    (request) => request.trip && request.status === "pending",
+                  )}
+                  onReview={handleReview}
+                />
+              )}
+              <RequestsPanel
+                token={token}
+                bookings={bookings}
+                schedules={snapshot.schedules}
+                exceptions={snapshot.exceptions}
+                selectedId={selectedRequestId}
+                onSaved={() => loadSnapshot(token)}
+              />
+            </>
           )}
           {tab === "schedule" && (
             <SchedulingPanel
@@ -286,28 +269,17 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
             />
           )}
           {tab === "locations" && (
-            <LocationPanel
+            <LocationsPanel
+              token={token}
               locations={snapshot.locations}
-              value={location}
-              onChange={setLocation}
-              onEdit={(item) =>
-                setLocation({
-                  id: item.id,
-                  name: item.name,
-                  landmark: item.landmark,
-                  mapsUrl: item.mapsUrl,
-                  coordinates: item.coordinates,
-                  published: item.published,
-                })
-              }
-              onSave={handleLocationSave}
+              onSaved={() => loadSnapshot(token)}
             />
           )}
           {tab === "fares" && (
             <PricingPanel token={token} onSaved={() => void loadSnapshot(token)} />
           )}
           {tab === "requests" && (
-            <RequestPanel requests={snapshot.requests} onReview={handleReview} />
+            <LocationRequestsPanel requests={snapshot.requests} onReview={handleReview} />
           )}
           {tab === "notifications" && (
             <NotificationsCenter token={token} onSaved={() => loadSnapshot(token)} />
@@ -319,171 +291,11 @@ export function OwnerPage({ onBack }: OwnerPageProps) {
   );
 }
 
-function LocationPanel({
-  locations,
-  value,
-  onChange,
-  onSave,
-  onEdit,
-}: {
-  locations: ServiceLocation[];
-  value: typeof defaultLocation;
-  onChange: (value: typeof defaultLocation) => void;
-  onEdit: (location: ServiceLocation) => void;
-  onSave: (event: React.FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <section className="owner-content">
-      <div className="section-heading">
-        <div className="eyebrow">Route catalogue</div>
-        <h2>Service locations</h2>
-      </div>
-      <div className="data-list">
-        {locations.map((item) => (
-          <div key={item.id}>
-            <strong>{item.name}</strong>
-            <span>
-              {item.landmark}
-              {item.researchId ? ` · Research ${item.researchId}` : ""}
-            </span>
-            <span>
-              {item.published ? "Published" : "Hidden"}
-              {item.mapsUrl && (
-                <>
-                  {" "}
-                  ·{" "}
-                  <a href={item.mapsUrl} target="_blank" rel="noreferrer">
-                    Map ↗
-                  </a>
-                </>
-              )}
-            </span>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => {
-                onEdit(item);
-                document.getElementById("location-editor")?.scrollIntoView({ block: "start" });
-              }}
-            >
-              Edit location
-            </button>
-          </div>
-        ))}
-      </div>
-      <div className="section-heading">
-        <h3>{value.id === "new" ? "Add a location" : "Edit location"}</h3>
-        <button type="button" className="text-button" onClick={() => onChange(defaultLocation)}>
-          New location
-        </button>
-      </div>
-      <form id="location-editor" className="stack-form" onSubmit={onSave}>
-        <label>
-          Name
-          <input
-            value={value.name}
-            onChange={(event) => onChange({ ...value, name: event.target.value })}
-            required
-          />
-        </label>
-        <label>
-          Landmark
-          <input
-            value={value.landmark}
-            onChange={(event) => onChange({ ...value, landmark: event.target.value })}
-            required
-          />
-        </label>
-        <label>
-          Google Maps URL <span className="muted">(optional)</span>
-          <input
-            name="mapsUrl"
-            type="url"
-            value={value.mapsUrl}
-            onChange={(event) => onChange({ ...value, mapsUrl: event.target.value })}
-          />
-        </label>
-        <label className="checkbox-label">
-          <input
-            type="checkbox"
-            checked={value.published}
-            onChange={(event) => onChange({ ...value, published: event.target.checked })}
-          />
-          Published for customers
-        </label>
-        <p className="muted">
-          Customers can choose published locations only when a published route connects them. Hiding
-          a location also makes its routes unavailable.
-        </p>
-        <button className="button button-primary" type="submit">
-          Save location
-        </button>
-      </form>
-    </section>
-  );
-}
-
-function RequestPanel({
-  requests,
-  onReview,
-}: {
-  requests: LocationRequest[];
-  onReview: (event: React.MouseEvent<HTMLButtonElement>) => void;
-}) {
-  return (
-    <section className="owner-content">
-      <div className="section-heading">
-        <div className="eyebrow">Customer voice</div>
-        <h2>Location requests</h2>
-      </div>
-      {requests.length === 0 ? (
-        <Message tone="info">No location requests yet.</Message>
-      ) : (
-        <div className="booking-table">
-          {requests.map((request) => (
-            <article className="booking-row" key={request.id}>
-              <div className="booking-row-main">
-                <span className="reference-small">{statusLabel(request.status)}</span>
-                <strong>{request.locationName}</strong>
-                <span className="muted">
-                  {request.landmark} · {request.requesterName} · {request.phone}
-                </span>
-              </div>
-              {request.status === "pending" && (
-                <div className="action-row compact">
-                  <button
-                    className="button button-primary"
-                    data-id={request.id}
-                    data-status="approved"
-                    type="button"
-                    onClick={onReview}
-                  >
-                    Approve & publish
-                  </button>
-                  <button
-                    className="button button-danger"
-                    data-id={request.id}
-                    data-status="declined"
-                    type="button"
-                    onClick={onReview}
-                  >
-                    Decline
-                  </button>
-                </div>
-              )}
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function tabTitle(tab: OwnerTab): string {
   if (tab === "fares") return "Pricing & routes";
   return tab === "queue"
     ? "Requests"
     : tab === "requests"
-      ? "Location requests"
+      ? "Route reviews"
       : tab[0].toUpperCase() + tab.slice(1);
 }

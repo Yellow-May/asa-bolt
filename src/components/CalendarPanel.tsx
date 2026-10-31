@@ -1,3 +1,5 @@
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { Dropdown } from "./Dropdown";
 import { useEffect, useState } from "react";
 import type { CalendarChoice, CalendarOverview } from "../../shared/calendar";
 import { CALENDAR_STATE_LABELS } from "../../shared/calendar";
@@ -229,13 +231,14 @@ export function CalendarPanel({ token }: { token: string }) {
           )}
         </div>
         {disconnecting && (
-          <section aria-label="Confirm calendar disconnect" className="notification-confirm">
-            <h4>Disconnect Google Calendar?</h4>
-            <p>
-              Existing Google events stay in place. Further updates wait until the same account and
-              calendar are reconnected. An update already being sent may still finish.
-            </p>
-            <div className="action-row">
+          <ConfirmationDialog
+            open
+            title="Disconnect Google Calendar?"
+            description="Existing Google events stay in place. Further updates wait until the same account and calendar are reconnected. An update already being sent may still finish."
+            busy={busy}
+            error={error}
+            onClose={() => setDisconnecting(false)}
+            footer={
               <button
                 type="button"
                 className="button button-primary"
@@ -258,16 +261,8 @@ export function CalendarPanel({ token }: { token: string }) {
               >
                 Confirm calendar disconnect
               </button>
-              <button
-                type="button"
-                className="button button-secondary"
-                disabled={busy}
-                onClick={() => setDisconnecting(false)}
-              >
-                Keep connected
-              </button>
-            </div>
-          </section>
+            }
+          />
         )}
         {calendars.length > 0 && data.connected && (
           <form
@@ -289,20 +284,18 @@ export function CalendarPanel({ token }: { token: string }) {
           >
             <label>
               Ride calendar
-              <select
+              <Dropdown
+                label="Ride calendar"
                 value={selected}
-                onChange={(event) => setSelected(event.target.value)}
+                onValueChange={setSelected}
                 disabled={busy}
                 required
-              >
-                <option value="">Choose a calendar</option>
-                {calendars.map((calendar) => (
-                  <option key={calendar.id} value={calendar.id}>
-                    {calendar.name}
-                    {calendar.primary ? " (primary)" : ""}
-                  </option>
-                ))}
-              </select>
+                placeholder="Choose a calendar"
+                options={calendars.map((calendar) => ({
+                  value: calendar.id,
+                  label: `${calendar.name}${calendar.primary ? " (primary)" : ""}`,
+                }))}
+              />
             </label>
             <p className="muted">
               Choose a dedicated dispatch calendar if available. Once ride events have synced, keep

@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { Dropdown } from "./Dropdown";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { BOOKING_STATUSES } from "../../shared/config";
 import type {
   Booking,
@@ -31,6 +33,10 @@ export function RequestsPanel({
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const handleStatusChange = useCallback((value: string) => {
+    setStatus(value);
+    setPage(0);
+  }, []);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(() =>
@@ -41,6 +47,11 @@ export function RequestsPanel({
   const [expanded, setExpanded] = useState(selectedId);
   const [reasonId, setReasonId] = useState("");
   const [reason, setReason] = useState("");
+  const handleCloseReason = useCallback(() => {
+    setReasonId("");
+    setReason("");
+    setError("");
+  }, []);
   const [pendingReview, setPendingReview] = useState<{ id: string; review: ConflictReview }>();
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -133,20 +144,15 @@ export function RequestsPanel({
         </label>
         <label>
           Status
-          <select
+          <Dropdown
+            label="Status"
             value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
-              setPage(0);
-            }}
-          >
-            <option value="">All statuses</option>
-            {BOOKING_STATUSES.map((item) => (
-              <option key={item} value={item}>
-                {statusLabel(item)}
-              </option>
-            ))}
-          </select>
+            onValueChange={handleStatusChange}
+            options={[
+              { value: "", label: "All statuses" },
+              ...BOOKING_STATUSES.map((item) => ({ value: item, label: statusLabel(item) })),
+            ]}
+          />
         </label>
         <label>
           Pickup from
@@ -297,40 +303,65 @@ export function RequestsPanel({
                   </button>
                 </div>
                 {reasonId.endsWith(`:${booking.id}`) && (
-                  <form
-                    className="cancel-box"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void update(
-                        booking.id,
-                        reasonId.startsWith("rejected:") ? "rejected" : "cancelled",
-                      );
-                    }}
-                  >
-                    <label>
-                      {reasonId.startsWith("rejected:")
-                        ? "Rejection reason"
-                        : "Cancellation reason"}
-                      <input
-                        required
-                        minLength={3}
-                        maxLength={240}
+                  <ConfirmationDialog
+                    open
+                    title={
+                      reasonId.startsWith("rejected:")
+                        ? "Reject this request?"
+                        : "Cancel this ride?"
+                    }
+                    description={`${booking.reference} · ${booking.origin.name} → ${booking.destination.name}. The customer will be notified of this decision.`}
+                    busy={busy}
+                    error={error}
+                    onClose={handleCloseReason}
+                    footer={
+                      <button
+                        type="submit"
+                        form={`decision-${booking.id}`}
+                        className="button button-danger"
                         disabled={busy}
-                        value={reason}
-                        onChange={(event) => setReason(event.target.value)}
-                      />
-                    </label>
-                    <button type="submit" className="button button-danger" disabled={busy}>
-                      {reasonId.startsWith("rejected:")
-                        ? "Confirm rejection"
-                        : "Confirm cancellation"}
-                    </button>
-                  </form>
+                      >
+                        {busy
+                          ? "Saving…"
+                          : reasonId.startsWith("rejected:")
+                            ? "Confirm rejection"
+                            : "Confirm cancellation"}
+                      </button>
+                    }
+                  >
+                    <form
+                      id={`decision-${booking.id}`}
+                      className="stack-form"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void update(
+                          booking.id,
+                          reasonId.startsWith("rejected:") ? "rejected" : "cancelled",
+                        );
+                      }}
+                    >
+                      <label>
+                        {reasonId.startsWith("rejected:")
+                          ? "Rejection reason"
+                          : "Cancellation reason"}
+                        <textarea
+                          rows={3}
+                          required
+                          minLength={3}
+                          maxLength={240}
+                          disabled={busy}
+                          value={reason}
+                          onChange={(event) => setReason(event.target.value)}
+                        />
+                      </label>
+                    </form>
+                  </ConfirmationDialog>
                 )}
                 {pending && (
                   <ConflictNotice
                     key={pending.token}
                     review={pending}
+                    error={error}
                     busy={busy}
                     action="Accept ride after review"
                     onConfirm={() => void update(booking.id, "confirmed", pending.token)}
@@ -339,7 +370,7 @@ export function RequestsPanel({
                 )}
                 {expanded === booking.id && (
                   <AdminRideDetails
-                    key={booking.id}
+                    key={`${booking.id}:${booking.scheduleRevision ?? 0}`}
                     booking={booking}
                     token={token}
                     onSaved={onSaved}

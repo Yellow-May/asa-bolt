@@ -24,7 +24,10 @@ import { HISTORY_COOKIE, HISTORY_SESSION_SECONDS, HistoryAccess } from "../histo
 import { previewOffer } from "../domain/offers.js";
 import { parsePickupTime } from "../domain/rules.js";
 import { HttpError } from "../errors.js";
+import { contactMethod } from "../domain/contact.js";
+import { optionalMapPoint } from "../domain/map-point.js";
 import { PricingService, type PricingDraft } from "../pricing.js";
+import { importEasternRoadPrices } from "../infrastructure/eastern-road-prices.js";
 import { importRouteResearch } from "../infrastructure/research.js";
 import { koboToNaira, nairaToKobo, roundNairaUpTo50 } from "../domain/pricing.js";
 import { seedDatabase } from "../infrastructure/seed.js";
@@ -35,6 +38,9 @@ import {
 
 import { ApiLimits, clientAddress, secureHeaders, serveFrontend } from "../operations.js";
 import { createBackup } from "../backup.js";
+import { RoadRouting } from "../road-routing.js";
+import { MapPricing } from "../map-pricing.js";
+import { EasternCatalogue, importEasternCatalogue } from "../eastern-catalogue.js";
 import { GoogleCalendar } from "../calendar.js";
 
 const MAX_BODY_BYTES = 1_000_000;
@@ -56,6 +62,8 @@ interface Runtime {
   staticDirectory: string;
   database: Database;
   calendar: GoogleCalendar;
+  mapPricing: MapPricing;
+  easternCatalogue: EasternCatalogue;
 }
 
 export interface AppOptions {
@@ -64,6 +72,7 @@ export interface AppOptions {
   notifications?: NotificationGateway;
   emailFetch?: typeof fetch;
   calendarFetch?: typeof fetch;
+  routingFetch?: typeof fetch;
 }
 
 export type RequestHandler = ((
@@ -104,10 +113,13 @@ export function createRequestHandler(options: AppOptions = {}): RequestHandler {
     options.database ?? new Database(env.ASA_BOLT_DATABASE_PATH ?? "./data/asa-bolt.sqlite");
   seedDatabase(database);
   importRouteResearch(database);
+  importEasternCatalogue(database);
+  importEasternRoadPrices(database);
   const repository = new Repository(database);
   const email = new CustomerEmail(env, database, options.emailFetch);
   const whatsapp = new CustomerEmail(env, database, options.emailFetch, "whatsapp");
   const pricing = new PricingService(database, repository);
+  const routing = new RoadRouting(database, env, options.routingFetch);
   const calendar = new GoogleCalendar(
     database,
     repository,
@@ -120,6 +132,8 @@ export function createRequestHandler(options: AppOptions = {}): RequestHandler {
   const runtime: Runtime = {
     repository,
     pricing,
+    mapPricing: new MapPricing({ database, repository, pricing, routing }),
+    easternCatalogue: new EasternCatalogue(database, repository, { routing, pricing }),
     bookings: new BookingApplication(
       repository,
       options.notifications ?? createNotificationGateway(env, { separateBookingEmail: true }),
@@ -136,7 +150,7 @@ export function createRequestHandler(options: AppOptions = {}): RequestHandler {
     database,
     calendar,
     sessions: new Map(),
-    history: new HistoryAccess(database, repository, email),
+    history: new HistoryAccess(database, repository, email, whatsapp),
     appOrigin: email.appOrigin,
     email,
     whatsapp,
@@ -309,6 +323,13 @@ async function routeApi(
 ): Promise<void> {
   const parts = url.pathname.split("/").filter(Boolean).slice(1);
   const body = request.method === "GET" ? {} : await readJson(request);
+  if (
+    request.method === "POST" &&
+    parts.length === 2 &&
+    parts[0] === "routing" &&
+    parts[1] === "distance"
+  )
+    return sendJson(response, 200, await runtime.mapPricing.distance(body));
   if (parts[0] === "history") return routeHistory(request, response, runtime, parts.slice(1), body);
   if (request.method === "GET" && parts[0] === "config")
     return sendJson(response, 200, { brand: BRAND_CONFIG });
@@ -389,9 +410,15 @@ async function routeHistory(
   }
   const ip = clientAddress(request, runtime.trustProxy);
   if (request.method === "POST" && parts.length === 1 && parts[0] === "link") {
-    await runtime.history.requestLink(requiredText(asRecord(body).email, "Email"), ip);
+    const input = asRecord(body);
+    const method = contactMethod(input.contactMethod);
+    await runtime.history.requestLink(
+      requiredText(method === "email" ? input.email : input.phone, "Contact"),
+      ip,
+      method,
+    );
     return sendJson(response, 202, {
-      message: "Check your email for a private link. It expires in 15 minutes.",
+      message: `Check ${method === "email" ? "your email" : "WhatsApp"} for a private link. It expires in 15 minutes.`,
     });
   }
   const secure = runtime.appOrigin.startsWith("https:") ? "; Secure" : "";
@@ -447,7 +474,11 @@ async function createBooking(
 ): Promise<void> {
   const input = bookingInput(body);
   if (!runtime.repository.findBookingByIdempotency(input.idempotencyKey)) {
-    runtime.history.limitBooking(input.email ?? "", clientAddress(request, runtime.trustProxy));
+    runtime.history.limitBooking(
+      input.contactMethod === "whatsapp" ? (input.phone ?? "") : (input.email ?? ""),
+      clientAddress(request, runtime.trustProxy),
+      input.contactMethod,
+    );
   }
   const result = await runtime.bookings.createBooking(input);
   sendJson(response, 201, result);
@@ -475,11 +506,28 @@ async function cancelBooking(
 
 function createLocationRequest(response: ServerResponse, runtime: Runtime, body: unknown): void {
   const input = asRecord(body);
+  const trip = input.trip === undefined ? undefined : asRecord(input.trip);
+  const email = optionalText(input.email);
   const request = runtime.bookings.createLocationRequest({
-    requesterName: requiredText(input.requesterName, "Your name"),
-    phone: requiredText(input.phone, "Phone number"),
+    requesterName: optionalText(input.requesterName),
+    phone: email ? "" : requiredText(input.phone, "WhatsApp number"),
+    email,
+    idempotencyKey: trip ? requiredText(input.idempotencyKey, "Request key") : undefined,
+    trip: trip
+      ? {
+          origin: requiredText(trip.origin, "Pickup location"),
+          destination: requiredText(trip.destination, "Destination"),
+          pickupAt: requiredText(trip.pickupAt, "Pickup time"),
+          pickupNote: optionalText(trip.pickupNote),
+          originPin: optionalMapPoint(trip.originPin),
+          destinationPin: optionalMapPoint(trip.destinationPin),
+          customLocations: Array.isArray(trip.customLocations)
+            ? trip.customLocations.slice(0, 2).map((name) => requiredText(name, "Location name"))
+            : undefined,
+        }
+      : undefined,
     locationName: requiredText(input.locationName, "Location name"),
-    landmark: requiredText(input.landmark, "Landmark"),
+    landmark: optionalText(input.landmark),
     mapsUrl: optionalText(input.mapsUrl),
   });
   sendJson(response, 201, request);
@@ -492,8 +540,23 @@ async function routeOwner(
   parts: string[],
   body: unknown,
 ): Promise<void> {
-  if (request.method === "POST" && parts[0] === "login") return ownerLogin(response, runtime, body);
+  if (request.method === "POST" && parts[0] === "login") {
+    if (parts.length !== 1 || request.url?.split("?")[0] !== "/api/owner/login")
+      throw new HttpError(404, "API route not found.");
+    return ownerLogin(response, runtime, body);
+  }
   requireOwner(request, runtime);
+  if (parts[0] === "map-routes" && parts.length === 2 && request.method === "POST") {
+    if (parts[1] === "preview")
+      return sendJson(response, 200, await runtime.mapPricing.preview(body));
+    if (parts[1] === "save") return sendJson(response, 200, await runtime.mapPricing.save(body));
+  }
+  if (parts[0] === "eastern-catalogue" && parts.length === 1) {
+    if (request.method === "GET")
+      return sendJson(response, 200, runtime.easternCatalogue.overview());
+    if (request.method === "POST")
+      return sendJson(response, 200, await runtime.easternCatalogue.calculateAndActivate());
+  }
   if (parts[0] === "calendar") {
     if (request.method === "GET" && parts.length === 1) {
       const url = new URL(request.url ?? "/", runtime.appOrigin);
@@ -847,6 +910,7 @@ function reviewLocationRequest(
 
 function bookingInput(body: unknown): BookingCreationInput {
   const input = asRecord(body);
+  const method = contactMethod(input.contactMethod);
   const priceChoice = input.priceChoice ?? "accept";
   if (priceChoice !== "accept" && priceChoice !== "negotiate")
     throw new HttpError(400, "Choose Accept price or Negotiate price.");
@@ -855,6 +919,7 @@ function bookingInput(body: unknown): BookingCreationInput {
       throw new HttpError(400, "Send one offer amount and an optional text note.");
   }
   return {
+    contactMethod: method,
     priceChoice,
     proposedAmountNaira: input.proposedAmountNaira as string | undefined,
     proposedAmountKobo:
@@ -864,10 +929,13 @@ function bookingInput(body: unknown): BookingCreationInput {
     negotiationNote: input.negotiationNote as string | undefined,
     idempotencyKey: requiredText(input.idempotencyKey, "Booking key"),
     customerName: optionalText(input.customerName),
-    phone: optionalText(input.phone),
+    phone:
+      method === "whatsapp"
+        ? requiredText(input.phone ?? input.whatsappNumber, "WhatsApp number")
+        : optionalText(input.phone),
     whatsappUpdates: input.whatsappUpdates === true,
     whatsappNumber: optionalText(input.whatsappNumber),
-    email: requiredText(input.email, "Email"),
+    email: method === "email" ? requiredText(input.email, "Email") : "",
     quotedAmountKobo: numberValue(input.quotedAmountKobo, "Quoted fare"),
     originId: requiredText(input.originId, "Pickup"),
     destinationId: requiredText(input.destinationId, "Destination"),

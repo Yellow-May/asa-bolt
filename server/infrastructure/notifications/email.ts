@@ -76,7 +76,7 @@ export class CustomerEmail {
     const message = {
       to: email,
       subject: `Your private ${BRAND_CONFIG.name} request history`,
-      text: `Open your requests: ${this.appOrigin}/my-requests#token=${token}\n\nThis private link expires in 15 minutes and can be used once. If you did not request it, ignore this email.`,
+      text: `Open your requests: ${this.appOrigin}/my-requests#token=${token}\n\nThis private link expires in 15 minutes and can be used once. If you did not request it, ignore this message.`,
     };
     // Keep verification tokens out of persistent delivery records and admin responses.
     const record = this.store.queue({

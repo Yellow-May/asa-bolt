@@ -1,0 +1,359 @@
+{
+  "id": "eastern-osm-2026-10-31",
+  "collectedAt": "2026-10-31T21:32:12Z",
+  "source": "OpenStreetMap via Overpass API",
+  "license": "ODbL 1.0; © OpenStreetMap contributors",
+  "query": "Cities and towns within NG-AB, NG-AN, NG-EB, NG-EN and NG-IM; 50 centres selected for geographic coverage.",
+  "locations": [
+    {
+      "osmId": 501517702,
+      "name": "Aba",
+      "latitude": 5.1128008,
+      "longitude": 7.3651376,
+      "sourceUrl": "https://www.openstreetmap.org/node/501517702"
+    },
+    {
+      "osmId": 501540903,
+      "name": "Abakaliki",
+      "latitude": 6.3208897,
+      "longitude": 8.1133202,
+      "sourceUrl": "https://www.openstreetmap.org/node/501540903"
+    },
+    {
+      "osmId": 11040271649,
+      "name": "Aboh",
+      "latitude": 5.4770337,
+      "longitude": 7.2711943,
+      "sourceUrl": "https://www.openstreetmap.org/node/11040271649"
+    },
+    {
+      "osmId": 8852011265,
+      "name": "Adani",
+      "latitude": 6.7352609,
+      "longitude": 7.0156509,
+      "sourceUrl": "https://www.openstreetmap.org/node/8852011265"
+    },
+    {
+      "osmId": 14109263563,
+      "name": "Afa",
+      "latitude": 6.6019448,
+      "longitude": 7.3234879,
+      "sourceUrl": "https://www.openstreetmap.org/node/14109263563"
+    },
+    {
+      "osmId": 501493222,
+      "name": "Afikpo",
+      "latitude": 5.8837902,
+      "longitude": 7.9372068,
+      "sourceUrl": "https://www.openstreetmap.org/node/501493222"
+    },
+    {
+      "osmId": 501516054,
+      "name": "Aguleri",
+      "latitude": 6.3322924,
+      "longitude": 6.8779601,
+      "sourceUrl": "https://www.openstreetmap.org/node/501516054"
+    },
+    {
+      "osmId": 501500726,
+      "name": "Akeze",
+      "latitude": 5.9175101,
+      "longitude": 7.6751106,
+      "sourceUrl": "https://www.openstreetmap.org/node/501500726"
+    },
+    {
+      "osmId": 501344492,
+      "name": "Akwete",
+      "latitude": 4.8866031,
+      "longitude": 7.357497,
+      "sourceUrl": "https://www.openstreetmap.org/node/501344492"
+    },
+    {
+      "osmId": 501394975,
+      "name": "Amagunze",
+      "latitude": 6.3303012,
+      "longitude": 7.651657,
+      "sourceUrl": "https://www.openstreetmap.org/node/501394975"
+    },
+    {
+      "osmId": 501485919,
+      "name": "Arochukwu",
+      "latitude": 5.3876203,
+      "longitude": 7.9064915,
+      "sourceUrl": "https://www.openstreetmap.org/node/501485919"
+    },
+    {
+      "osmId": 501519772,
+      "name": "Ata",
+      "latitude": 5.6136273,
+      "longitude": 7.1284539,
+      "sourceUrl": "https://www.openstreetmap.org/node/501519772"
+    },
+    {
+      "osmId": 501488971,
+      "name": "Atani",
+      "latitude": 6.0149812,
+      "longitude": 6.7471662,
+      "sourceUrl": "https://www.openstreetmap.org/node/501488971"
+    },
+    {
+      "osmId": 501395566,
+      "name": "Awgu",
+      "latitude": 6.0722225,
+      "longitude": 7.477742,
+      "sourceUrl": "https://www.openstreetmap.org/node/501395566"
+    },
+    {
+      "osmId": 501540935,
+      "name": "Awka",
+      "latitude": 6.218947,
+      "longitude": 7.0774372,
+      "sourceUrl": "https://www.openstreetmap.org/node/501540935"
+    },
+    {
+      "osmId": 501523659,
+      "name": "Azumini",
+      "latitude": 4.945324,
+      "longitude": 7.482893,
+      "sourceUrl": "https://www.openstreetmap.org/node/501523659"
+    },
+    {
+      "osmId": 501517655,
+      "name": "Bende",
+      "latitude": 5.559261,
+      "longitude": 7.6326656,
+      "sourceUrl": "https://www.openstreetmap.org/node/501517655"
+    },
+    {
+      "osmId": 10974008154,
+      "name": "Ebiaji Town",
+      "latitude": 6.2221786,
+      "longitude": 7.9944893,
+      "sourceUrl": "https://www.openstreetmap.org/node/10974008154"
+    },
+    {
+      "osmId": 3974130458,
+      "name": "Effium",
+      "latitude": 6.6308218,
+      "longitude": 8.0572947,
+      "sourceUrl": "https://www.openstreetmap.org/node/3974130458"
+    },
+    {
+      "osmId": 13204030355,
+      "name": "Ekwulobia",
+      "latitude": 6.02381,
+      "longitude": 7.0823847,
+      "sourceUrl": "https://www.openstreetmap.org/node/13204030355"
+    },
+    {
+      "osmId": 27565107,
+      "name": "Enugu",
+      "latitude": 6.4496519,
+      "longitude": 7.5136856,
+      "sourceUrl": "https://www.openstreetmap.org/node/27565107"
+    },
+    {
+      "osmId": 501522142,
+      "name": "Enugu-Ezike",
+      "latitude": 6.9825,
+      "longitude": 7.457,
+      "sourceUrl": "https://www.openstreetmap.org/node/501522142"
+    },
+    {
+      "osmId": 10975218813,
+      "name": "Ezillo",
+      "latitude": 6.4291846,
+      "longitude": 7.8178812,
+      "sourceUrl": "https://www.openstreetmap.org/node/10975218813"
+    },
+    {
+      "osmId": 10975210511,
+      "name": "Ezzamgbo",
+      "latitude": 6.3966118,
+      "longitude": 7.9727206,
+      "sourceUrl": "https://www.openstreetmap.org/node/10975210511"
+    },
+    {
+      "osmId": 501491538,
+      "name": "Ihiala",
+      "latitude": 5.8552964,
+      "longitude": 6.8601091,
+      "sourceUrl": "https://www.openstreetmap.org/node/501491538"
+    },
+    {
+      "osmId": 14008694673,
+      "name": "Ikem",
+      "latitude": 6.7750825,
+      "longitude": 7.7126443,
+      "sourceUrl": "https://www.openstreetmap.org/node/14008694673"
+    },
+    {
+      "osmId": 10982213728,
+      "name": "Isi-Ikwuato",
+      "latitude": 5.7364821,
+      "longitude": 7.5026511,
+      "sourceUrl": "https://www.openstreetmap.org/node/10982213728"
+    },
+    {
+      "osmId": 501496876,
+      "name": "Iwollo-Oye",
+      "latitude": 6.4422945,
+      "longitude": 7.284743,
+      "sourceUrl": "https://www.openstreetmap.org/node/501496876"
+    },
+    {
+      "osmId": 501491536,
+      "name": "Mberichi",
+      "latitude": 5.3511323,
+      "longitude": 6.9500429,
+      "sourceUrl": "https://www.openstreetmap.org/node/501491536"
+    },
+    {
+      "osmId": 8873204359,
+      "name": "Mmahu-Egbema",
+      "latitude": 5.5239273,
+      "longitude": 6.7525504,
+      "sourceUrl": "https://www.openstreetmap.org/node/8873204359"
+    },
+    {
+      "osmId": 501331835,
+      "name": "Nachi",
+      "latitude": 6.2848,
+      "longitude": 7.3386,
+      "sourceUrl": "https://www.openstreetmap.org/node/501331835"
+    },
+    {
+      "osmId": 10975249124,
+      "name": "Ngodo",
+      "latitude": 5.965289,
+      "longitude": 7.3856354,
+      "sourceUrl": "https://www.openstreetmap.org/node/10975249124"
+    },
+    {
+      "osmId": 501362948,
+      "name": "Nkwerre",
+      "latitude": 5.7591349,
+      "longitude": 7.103838,
+      "sourceUrl": "https://www.openstreetmap.org/node/501362948"
+    },
+    {
+      "osmId": 501498472,
+      "name": "Nnewi",
+      "latitude": 6.019531,
+      "longitude": 6.917181,
+      "sourceUrl": "https://www.openstreetmap.org/node/501498472"
+    },
+    {
+      "osmId": 501523017,
+      "name": "Nsukka",
+      "latitude": 6.8561,
+      "longitude": 7.3927,
+      "sourceUrl": "https://www.openstreetmap.org/node/501523017"
+    },
+    {
+      "osmId": 501488677,
+      "name": "Nzam",
+      "latitude": 6.4532162,
+      "longitude": 6.7279927,
+      "sourceUrl": "https://www.openstreetmap.org/node/501488677"
+    },
+    {
+      "osmId": 5918582386,
+      "name": "Oguta",
+      "latitude": 5.710435,
+      "longitude": 6.809365,
+      "sourceUrl": "https://www.openstreetmap.org/node/5918582386"
+    },
+    {
+      "osmId": 501509753,
+      "name": "Ohafia",
+      "latitude": 5.6335371,
+      "longitude": 7.8284586,
+      "sourceUrl": "https://www.openstreetmap.org/node/501509753"
+    },
+    {
+      "osmId": 14206557649,
+      "name": "Okigwe",
+      "latitude": 5.8221333,
+      "longitude": 7.339248,
+      "sourceUrl": "https://www.openstreetmap.org/node/14206557649"
+    },
+    {
+      "osmId": 14008728555,
+      "name": "Omor",
+      "latitude": 6.5191838,
+      "longitude": 6.9574148,
+      "sourceUrl": "https://www.openstreetmap.org/node/14008728555"
+    },
+    {
+      "osmId": 501496934,
+      "name": "Onicha",
+      "latitude": 6.1162455,
+      "longitude": 7.8348576,
+      "sourceUrl": "https://www.openstreetmap.org/node/501496934"
+    },
+    {
+      "osmId": 5232601618,
+      "name": "Onitsha",
+      "latitude": 6.1461619,
+      "longitude": 6.8019088,
+      "sourceUrl": "https://www.openstreetmap.org/node/5232601618"
+    },
+    {
+      "osmId": 10879387848,
+      "name": "Onuebonyi Echara",
+      "latitude": 6.1158708,
+      "longitude": 8.1663449,
+      "sourceUrl": "https://www.openstreetmap.org/node/10879387848"
+    },
+    {
+      "osmId": 2469246094,
+      "name": "Owerri",
+      "latitude": 5.489736,
+      "longitude": 7.0341973,
+      "sourceUrl": "https://www.openstreetmap.org/node/2469246094"
+    },
+    {
+      "osmId": 10975228878,
+      "name": "Ugbodo",
+      "latitude": 6.5080372,
+      "longitude": 8.1347288,
+      "sourceUrl": "https://www.openstreetmap.org/node/10975228878"
+    },
+    {
+      "osmId": 501431169,
+      "name": "Ukpata",
+      "latitude": 6.64,
+      "longitude": 7.1707,
+      "sourceUrl": "https://www.openstreetmap.org/node/501431169"
+    },
+    {
+      "osmId": 2841325913,
+      "name": "Umuahia",
+      "latitude": 5.5324032,
+      "longitude": 7.4924165,
+      "sourceUrl": "https://www.openstreetmap.org/node/2841325913"
+    },
+    {
+      "osmId": 501332173,
+      "name": "Umulokpa",
+      "latitude": 6.5078722,
+      "longitude": 7.0970484,
+      "sourceUrl": "https://www.openstreetmap.org/node/501332173"
+    },
+    {
+      "osmId": 501479421,
+      "name": "Umuneke Ngor",
+      "latitude": 5.3347644,
+      "longitude": 7.151781,
+      "sourceUrl": "https://www.openstreetmap.org/node/501479421"
+    },
+    {
+      "osmId": 501383665,
+      "name": "Umunze",
+      "latitude": 5.9660801,
+      "longitude": 7.2367984,
+      "sourceUrl": "https://www.openstreetmap.org/node/501383665"
+    }
+  ]
+}

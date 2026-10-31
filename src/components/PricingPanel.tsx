@@ -1,3 +1,5 @@
+import { EasternCataloguePanel } from "./EasternCataloguePanel";
+import { Dropdown } from "./Dropdown";
 import { useCallback, useEffect, useState } from "react";
 import type {
   FarePreview,
@@ -99,6 +101,10 @@ export function PricingPanel({ token, onSaved }: { token: string; onSaved: () =>
   const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+  const handleFilterChange = useCallback((value: string) => {
+    setFilter(value);
+    setPage(0);
+  }, []);
   const [page, setPage] = useState(0);
   const [selection, setSelection] = useState("");
   useEffect(() => {
@@ -130,6 +136,10 @@ export function PricingPanel({ token, onSaved }: { token: string; onSaved: () =>
     if (route) setSelection(route.id);
     onSaved();
   }
+  const handleCatalogueSaved = useCallback(async () => {
+    await load();
+    onSaved();
+  }, [load, onSaved]);
   if (!data)
     return (
       <section className="owner-content">
@@ -165,6 +175,7 @@ export function PricingPanel({ token, onSaved }: { token: string; onSaved: () =>
       </div>
       {error && <Message tone="error">{error}</Message>}
       {notice && <Message tone="success">{notice}</Message>}
+      <EasternCataloguePanel token={token} onSaved={handleCatalogueSaved} />
       <p>
         {data.research.locationCount} research locations and {data.research.routePairCount} pairs
         imported as {data.research.directionalRouteCount} separate directions. Collected{" "}
@@ -221,17 +232,16 @@ export function PricingPanel({ token, onSaved }: { token: string; onSaved: () =>
         </label>
         <label>
           Show
-          <select
+          <Dropdown
+            label="Publication"
             value={filter}
-            onChange={(event) => {
-              setFilter(event.target.value);
-              setPage(0);
-            }}
-          >
-            <option value="all">All routes</option>
-            <option value="published">Published</option>
-            <option value="draft">Drafts</option>
-          </select>
+            onValueChange={handleFilterChange}
+            options={[
+              { value: "all", label: "All routes" },
+              { value: "published", label: "Published" },
+              { value: "draft", label: "Drafts" },
+            ]}
+          />
         </label>
       </div>
       <div className="route-list">
@@ -393,14 +403,18 @@ function PricingAreas({
       </p>
       <label>
         Choose an area to edit
-        <select value={selected} onChange={(event) => setSelected(event.target.value)}>
-          <option value="new">Add a pricing area</option>
-          {data.areas.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} · {item.ratePerKm ? `₦${item.ratePerKm}/km` : "Default rate"}
-            </option>
-          ))}
-        </select>
+        <Dropdown
+          label="Choose an area to edit"
+          value={selected}
+          onValueChange={setSelected}
+          options={[
+            { value: "new", label: "Add a pricing area" },
+            ...data.areas.map((item) => ({
+              value: item.id,
+              label: `${item.name} · ${item.ratePerKm ? `₦${item.ratePerKm}/km` : "Default rate"}`,
+            })),
+          ]}
+        />
       </label>
       {!data.areas.length && (
         <p className="muted">
@@ -630,51 +644,45 @@ function RouteEditor({
           <div className="form-grid">
             <label>
               Route pickup
-              <select
+              <Dropdown
+                label="Route pickup"
                 value={originId}
-                disabled={Boolean(route)}
-                onChange={(event) => setOriginId(event.target.value)}
+                onValueChange={setOriginId}
+                disabled={Boolean(route) || busy}
                 required
-              >
-                <option value="">Choose pickup</option>
-                {data.locations.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Choose pickup"
+                options={data.locations.map((item) => ({ value: item.id, label: item.name }))}
+              />
             </label>
             <label>
               Route destination
-              <select
+              <Dropdown
+                label="Route destination"
                 value={destinationId}
-                disabled={Boolean(route)}
-                onChange={(event) => setDestinationId(event.target.value)}
+                onValueChange={setDestinationId}
+                disabled={Boolean(route) || busy}
                 required
-              >
-                <option value="">Choose destination</option>
-                {data.locations
+                placeholder="Choose destination"
+                options={data.locations
                   .filter((item) => item.id !== originId)
-                  .map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}
-                    </option>
-                  ))}
-              </select>
+                  .map((item) => ({ value: item.id, label: item.name }))}
+              />
             </label>
             <label>
               Pricing area
-              <select
+              <Dropdown
+                label="Pricing area"
                 value={pricingAreaId}
-                onChange={(event) => setPricingAreaId(event.target.value)}
-              >
-                <option value="">No area · use default rate</option>
-                {data.areas.map((area) => (
-                  <option key={area.id} value={area.id}>
-                    {area.name} · {area.ratePerKm ? `₦${area.ratePerKm}/km` : "Default rate"}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setPricingAreaId}
+                disabled={busy}
+                options={[
+                  { value: "", label: "No area · use default rate" },
+                  ...data.areas.map((area) => ({
+                    value: area.id,
+                    label: `${area.name} · ${area.ratePerKm ? `₦${area.ratePerKm}/km` : "Default rate"}`,
+                  })),
+                ]}
+              />
             </label>
             <label>
               Distance (km)

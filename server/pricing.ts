@@ -248,7 +248,7 @@ export class PricingService {
     );
     const savedId = existing ? id : randomUUID();
     const db = this.database.connection;
-    db.exec("BEGIN IMMEDIATE");
+    db.exec("SAVEPOINT save_route");
     try {
       db.prepare(
         "INSERT INTO service_routes (id, origin_id, destination_id, distance_km, published, distance_note, pricing_area_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET distance_km=excluded.distance_km, published=excluded.published, distance_note=excluded.distance_note, pricing_area_id=excluded.pricing_area_id, updated_at=excluded.updated_at",
@@ -267,9 +267,9 @@ export class PricingService {
           origin.id,
           destination.id,
         );
-      db.exec("COMMIT");
+      db.exec("RELEASE SAVEPOINT save_route");
     } catch (error) {
-      db.exec("ROLLBACK");
+      db.exec("ROLLBACK TO SAVEPOINT save_route; RELEASE SAVEPOINT save_route");
       throw error;
     }
     return this.findRoute(origin.id, destination.id)!;

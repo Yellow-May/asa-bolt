@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import type { RequestHistory } from "../shared/contracts.js";
-import { normalizeEmail } from "./domain/rules.js";
+import type { ContactMethod, RequestHistory } from "../shared/contracts.js";
+import { contactIdentity, readContactIdentity } from "./domain/contact.js";
 import { HttpError } from "./errors.js";
 import type { Database } from "./infrastructure/database.js";
 import type { CustomerEmail } from "./infrastructure/notifications/email.js";
@@ -16,15 +16,16 @@ export class HistoryAccess {
     private readonly database: Database,
     private readonly repository: Repository,
     private readonly email: CustomerEmail,
+    private readonly whatsapp?: CustomerEmail,
   ) {}
 
-  limitBooking(email: string, ip: string): void {
+  limitBooking(value: string, ip: string, method: ContactMethod = "email"): void {
     this.limit(`booking-ip:${ip}`, 50);
-    this.limit(`booking-email:${normalizeEmail(email)}`, 10);
+    this.limit(`booking-contact:${contactIdentity(method, value)}`, 10);
   }
 
-  async requestLink(value: string, ip: string): Promise<void> {
-    const email = normalizeEmail(value);
+  async requestLink(value: string, ip: string, method: ContactMethod = "email"): Promise<void> {
+    const email = contactIdentity(method, value);
     this.limit(`ip:${ip}`, 20);
     this.limit(`email:${email}`, 3);
     this.cleanup();
@@ -33,12 +34,18 @@ export class HistoryAccess {
     this.database.connection
       .prepare("INSERT INTO history_links (token_hash, email, expires_at) VALUES (?, ?, ?)")
       .run(tokenHash, email, Date.now() + LINK_LIFETIME);
-    const result = await this.email.sendHistoryLink(email, token);
-    if (result.status === "failed") {
+    const delivery = method === "whatsapp" ? this.whatsapp : this.email;
+    const result = await delivery?.sendHistoryLink(readContactIdentity(email).value, token);
+    if (!result || result.status === "failed" || result.status === "skipped") {
       this.database.connection
         .prepare("DELETE FROM history_links WHERE token_hash = ?")
         .run(tokenHash);
-      throw new HttpError(503, "We could not send a private link. Please try again later.");
+      throw new HttpError(
+        503,
+        method === "whatsapp"
+          ? "We could not send the WhatsApp link. Try again later or choose email."
+          : "We could not send a private link. Please try again later.",
+      );
     }
   }
 
@@ -65,18 +72,31 @@ export class HistoryAccess {
 
   read(token: string): RequestHistory {
     if (!/^[a-f0-9]{64}$/.test(token))
-      throw new HttpError(401, "Verify your email to view your requests.");
+      throw new HttpError(401, "Open a private link to view your requests.");
     const session = this.database.connection
       .prepare(
         "SELECT email, expires_at FROM history_sessions WHERE token_hash = ? AND expires_at > ?",
       )
       .get(hash(token), Date.now());
     if (!session)
-      throw new HttpError(401, "Your private session has expired. Request another email link.");
+      throw new HttpError(401, "Your private session has expired. Request another private link.");
     const email = String(session.email);
+    const contact = readContactIdentity(email);
     return {
-      email,
-      bookings: this.repository.listBookingsByEmail(email),
+      email: contact.method === "email" ? contact.value : "",
+      contact: contact.value,
+      contactMethod: contact.method,
+      bookings:
+        contact.method === "email"
+          ? this.repository.listBookingsByEmail(contact.value)
+          : this.repository.listBookingsByPhone(contact.value),
+      locationRequests: this.repository
+        .listLocationRequests()
+        .filter((request) =>
+          contact.method === "email"
+            ? request.email === contact.value
+            : request.phone === contact.value,
+        ),
       expiresAt: Number(session.expires_at),
     };
   }

@@ -52,6 +52,18 @@ export class Database {
         this.connection.exec(`ALTER TABLE bookings ADD COLUMN ${name} ${definition}`);
     }
     const locationColumns = this.connection.prepare("PRAGMA table_info(service_locations)").all();
+    const requestColumns = this.connection.prepare("PRAGMA table_info(location_requests)").all();
+    for (const [name, definition] of [
+      ["email", "TEXT NOT NULL DEFAULT ''"],
+      ["trip_details", "TEXT NOT NULL DEFAULT ''"],
+      ["idempotency_key", "TEXT NOT NULL DEFAULT ''"],
+    ]) {
+      if (!requestColumns.some((item) => item.name === name))
+        this.connection.exec(`ALTER TABLE location_requests ADD COLUMN ${name} ${definition}`);
+    }
+    this.connection.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS location_requests_key ON location_requests(idempotency_key) WHERE idempotency_key != ''",
+    );
     for (const column of [
       "research_id",
       "research_area",
@@ -88,6 +100,12 @@ export class Database {
 }
 
 const schemaSql = `
+CREATE TABLE IF NOT EXISTS road_distance_cache (
+  id TEXT PRIMARY KEY,
+  distance_meters INTEGER NOT NULL CHECK(distance_meters > 0),
+  calculated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS service_locations (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,

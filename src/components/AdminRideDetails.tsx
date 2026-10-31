@@ -286,6 +286,7 @@ export function AdminRideDetails({
             <ConflictNotice
               key={review.token}
               review={review}
+              error={error}
               busy={busy}
               action="Reschedule after review"
               onConfirm={() => void save(review.token)}

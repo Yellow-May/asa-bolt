@@ -8,24 +8,40 @@
   --ink: #111111;
   --paper: #ffffff;
   --paper-deep: #f2f2f2;
-  --leaf: #111111;
-  --leaf-dark: #000000;
+  --leaf: #185b48;
+  --leaf-dark: #104433;
   --orange: #f26b3b;
   --orange-dark: #b9431b;
   --orange-bright: #ff8a61;
   --cream: #ffffff;
   --line: #d4d4d4;
   --muted: #5e5e5e;
-  --danger: var(--orange-dark);
+  --danger: #a73732;
+  --danger-soft: #fff3f1;
+  --danger-line: #e8bbb5;
+  --leaf-soft: #edf4ef;
   --cream-muted: #f0f0f0;
   --orange-soft: #ffd6c4;
-  --leaf-line: #555555;
+  --leaf-line: #c9dbd0;
   --cream-soft: #d8d8d8;
   --shadow: 0 20px 45px rgba(0, 0, 0, 0.14);
 }
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.app-shell > .topbar,
+.app-shell > .site-footer {
+  width: 100%;
+  margin: 0 auto;
+  flex-shrink: 0;
+}
+#page-content {
+  flex: 1;
+  width: 100%;
 }
 .skip-link {
   position: absolute;
@@ -177,52 +193,6 @@ p {
   line-height: 1.7;
 }
 
-.customer-shell {
-  max-width: 1280px;
-  margin: auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(350px, 0.78fr);
-  gap: 2rem;
-  padding: 1.25rem;
-}
-.hero-panel {
-  min-height: 650px;
-  background: var(--leaf);
-  color: var(--cream);
-  padding: clamp(2rem, 7vw, 7rem) clamp(1.5rem, 6vw, 6rem);
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border-radius: 2rem;
-}
-.hero-panel::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  pointer-events: none;
-  width: 25rem;
-  height: 25rem;
-  border: 1px solid var(--orange);
-  border-radius: 50%;
-  right: -8rem;
-  bottom: -8rem;
-  box-shadow:
-    0 0 0 2rem var(--leaf),
-    0 0 0 3rem var(--orange);
-  opacity: 0.9;
-}
-.hero-panel h1 {
-  font-size: clamp(2.5rem, 5.3vw, 4.5rem);
-}
-.hero-panel h1 em {
-  color: var(--orange);
-  font-style: normal;
-}
-.hero-panel p {
-  max-width: 27rem;
-  color: var(--cream-muted);
-  font-size: 1rem;
-}
 .eyebrow {
   color: var(--orange-dark);
   font-size: 0.72rem;
@@ -230,31 +200,6 @@ p {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   margin-bottom: 0.75rem;
-}
-.hero-panel .eyebrow {
-  color: var(--orange-soft);
-}
-.hero-stamp {
-  position: absolute;
-  left: 3rem;
-  bottom: 2rem;
-  border: 1px solid var(--cream-soft);
-  border-radius: 50%;
-  width: 7rem;
-  height: 7rem;
-  display: grid;
-  place-items: center;
-  transform: rotate(-12deg);
-  font-family: "Fraunces", Georgia, serif;
-  font-size: 2rem;
-  z-index: 1;
-}
-.hero-stamp span {
-  display: block;
-  font-family: "DM Mono", monospace;
-  font-size: 0.45rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 .booking-panel,
 .request-panel,
@@ -266,13 +211,6 @@ p {
   border-radius: 1.5rem;
   box-shadow: var(--shadow);
   padding: clamp(1.25rem, 4vw, 2.5rem);
-}
-.booking-panel {
-  align-self: start;
-  margin-top: 4rem;
-}
-.booking-panel h2 {
-  font-size: 2.4rem;
 }
 .stack-form {
   display: grid;
@@ -493,8 +431,8 @@ legend {
 }
 .message-error {
   color: var(--danger);
-  background: var(--orange-soft);
-  border-color: var(--orange);
+  background: var(--danger-soft);
+  border-color: var(--danger-line);
 }
 .message-success {
   color: var(--leaf-dark);
@@ -505,19 +443,6 @@ legend {
   color: var(--ink);
   background: var(--paper-deep);
   border-color: var(--line);
-}
-.trust-strip {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 1rem 0;
-  color: var(--muted);
-  font-size: 0.67rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
 }
 .request-panel {
   grid-column: 1 / -1;
@@ -531,15 +456,6 @@ legend {
 }
 .request-panel .stack-form {
   max-width: 36rem;
-}
-.owner-link {
-  grid-column: 1 / -1;
-  justify-self: end;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  font-size: 0.7rem;
-  text-decoration: underline;
 }
 .confirmation-card,
 .status-card {
@@ -783,38 +699,11 @@ legend {
     width: 100%;
     justify-content: space-between;
   }
-  .customer-shell {
-    display: block;
-    padding: 0.75rem;
-  }
-  .hero-panel {
-    min-height: 475px;
-    border-radius: 1.25rem;
-    padding: 2rem 1.35rem;
-  }
-  .hero-panel::after {
-    right: -14rem;
-    bottom: -16rem;
-  }
-  .hero-stamp {
-    left: 1.5rem;
-    bottom: 1.5rem;
-  }
-  .booking-panel {
-    margin: 0.75rem 0;
-  }
   .request-panel {
     display: block;
   }
   .request-panel > div {
     margin-bottom: 2rem;
-  }
-  .trust-strip {
-    margin: 2rem 0;
-    flex-wrap: wrap;
-  }
-  .trust-strip span {
-    white-space: nowrap;
   }
   .owner-header {
     align-items: start;

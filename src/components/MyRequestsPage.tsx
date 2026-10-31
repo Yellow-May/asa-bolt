@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { RequestHistory } from "../../shared/contracts";
+import { useCallback, useEffect, useState } from "react";
+import type { ContactMethod, RequestHistory } from "../../shared/contracts";
 import {
   ApiError,
   closeRequestHistory,
@@ -10,12 +10,36 @@ import {
 import { formatDateTime, statusLabel } from "../format";
 import { FareDetails } from "./FareDetails";
 import { Message } from "./Message";
+import { ContactMethodChoice } from "./ContactMethodChoice";
+import { LocationPins } from "./LocationPins";
+import { BookingField } from "./BookingField";
+import { readRememberedContact } from "../remembered-contact";
+import { useBookingValidation } from "../useBookingValidation";
 
 export function MyRequestsPage() {
   const [linkToken, setLinkToken] = useState(
     () => new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "",
   );
-  const [email, setEmail] = useState("");
+  const [savedContact] = useState(readRememberedContact);
+  const [contact, setContact] = useState(savedContact?.value ?? "");
+  const { fieldErrors, handleBlur, handleChange, validate, resetValidation } =
+    useBookingValidation();
+  const [method, setMethod] = useState<ContactMethod>(savedContact?.method ?? "email");
+  const contactName = method === "email" ? "email" : "whatsappNumber";
+  const handleMethodChange = useCallback(
+    (value: ContactMethod) => {
+      setMethod(value);
+      setContact(savedContact?.method === value ? savedContact.value : "");
+      resetValidation();
+      setNotice("");
+      setError("");
+    },
+    [resetValidation, savedContact],
+  );
+  const handleContactChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => setContact(event.target.value),
+    [],
+  );
   const [history, setHistory] = useState<RequestHistory>();
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -65,7 +89,7 @@ export function MyRequestsPage() {
     const timer = window.setTimeout(
       () => {
         setHistory(undefined);
-        setError("Your private session has expired. Request a new email link.");
+        setError("Your private session has expired. Request a new private link.");
       },
       Math.max(0, history.expiresAt - Date.now()),
     );
@@ -74,12 +98,12 @@ export function MyRequestsPage() {
 
   async function sendLink(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !validate(event.currentTarget)) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const result = await requestHistoryLink(email);
+      const result = await requestHistoryLink(contact, method);
       setNotice(result.message);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "We could not send a private link.");
@@ -109,7 +133,7 @@ export function MyRequestsPage() {
     try {
       await closeRequestHistory();
       setHistory(undefined);
-      setEmail("");
+      setContact("");
       setNotice("Your private session is closed.");
       setError("");
     } catch {
@@ -121,15 +145,19 @@ export function MyRequestsPage() {
 
   return (
     <main className="narrow-page history-page">
-      <div className="eyebrow">Private request history</div>
-      <h1>My requests</h1>
+      <header className="booking-intro">
+        <a className="booking-back" href="/" aria-label="Back to booking">
+          ←
+        </a>
+        <h1>My requests</h1>
+      </header>
       {error && <Message tone="error">{error}</Message>}
       {notice && <Message tone="success">{notice}</Message>}
       {loading && <Message tone="info">Checking your private session…</Message>}
       {!loading && linkToken && (
         <section className="status-card">
           <h2>Open your requests</h2>
-          <p>This email link can be used once. Your private session lasts 30 minutes.</p>
+          <p>This private link can be used once. Your session lasts 30 minutes.</p>
           <button
             className="button button-primary"
             type="button"
@@ -142,26 +170,38 @@ export function MyRequestsPage() {
       )}
       {!loading && !linkToken && !history && (
         <section className="status-card">
-          <h2>Get a private link</h2>
-          <p>
-            Enter your email. We’ll send a link that expires in 15 minutes. Your requests appear
-            only after you open that link.
-          </p>
-          <form className="stack-form" onSubmit={sendLink}>
-            <label>
-              Email address
+          <p>Choose where to receive your private link.</p>
+          <form
+            className="stack-form"
+            onSubmit={sendLink}
+            onBlur={handleBlur}
+            onChange={handleChange}
+            noValidate
+          >
+            <ContactMethodChoice value={method} onChange={handleMethodChange} />
+            <BookingField
+              name={contactName}
+              label={method === "email" ? "Email address" : "WhatsApp number"}
+              required
+              error={fieldErrors[contactName]}
+            >
               <input
-                type="email"
-                autoComplete="email"
-                maxLength={254}
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                key={method}
+                id={`booking-${contactName}`}
+                name={contactName}
+                type={method === "email" ? "email" : "tel"}
+                autoComplete={method === "email" ? "email" : "tel"}
+                maxLength={method === "email" ? 254 : 20}
+                value={contact}
+                onChange={handleContactChange}
                 required
                 disabled={busy}
+                aria-invalid={Boolean(fieldErrors[contactName])}
+                aria-describedby={`booking-${contactName}-help`}
               />
-            </label>
+            </BookingField>
             <button className="button button-primary" type="submit" disabled={busy}>
-              {busy ? "Sending link…" : "Email me a private link"}
+              {busy ? "Sending link…" : "Send private link"}
             </button>
           </form>
         </section>
@@ -170,7 +210,7 @@ export function MyRequestsPage() {
         <>
           <div className="history-heading">
             <p>
-              Requests for <strong>{history.email}</strong>
+              Requests for <strong>{history.contact || history.email}</strong>
               <br />
               <span className="muted">
                 Private access ends {formatDateTime(new Date(history.expiresAt).toISOString())}.
@@ -180,8 +220,8 @@ export function MyRequestsPage() {
               Close private session
             </button>
           </div>
-          {history.bookings.length === 0 ? (
-            <Message tone="info">No ride requests for this email yet.</Message>
+          {history.bookings.length === 0 && !history.locationRequests?.length ? (
+            <Message tone="info">No ride requests for this contact yet.</Message>
           ) : (
             <div className="history-list">
               {history.bookings.map((booking) => (
@@ -217,6 +257,26 @@ export function MyRequestsPage() {
               ))}
             </div>
           )}
+          {history.locationRequests?.map((request) => (
+            <article className="history-card" key={request.id}>
+              <div className="section-heading">
+                <h2>
+                  {request.trip
+                    ? `${request.trip.origin} → ${request.trip.destination}`
+                    : request.locationName}
+                </h2>
+                <span className="status-pill">{statusLabel(request.status)}</span>
+              </div>
+              {request.trip && <p>{formatDateTime(request.trip.pickupAt)}</p>}
+              <LocationPins trip={request.trip} />
+              <p>
+                {request.status === "pending"
+                  ? "Route awaiting admin review. Fare and ride need confirmation."
+                  : request.responseNote ||
+                    "Location review complete. Contact the admin to confirm your ride and fare."}
+              </p>
+            </article>
+          ))}
           <p>
             <a className="button button-primary" href="/">
               Request a ride

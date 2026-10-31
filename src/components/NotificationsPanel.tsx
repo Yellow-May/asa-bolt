@@ -1,3 +1,5 @@
+import { ConfirmationDialog } from "./ConfirmationDialog";
+import { Dropdown } from "./Dropdown";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EMAIL_EVENTS,
@@ -33,6 +35,11 @@ export function NotificationsPanel({
   const [recipients, setRecipients] = useState("");
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
+  const handleStatusChange = useCallback((value: string) => {
+    setStatus(value);
+    setPage(0);
+    setConfirmation(undefined);
+  }, []);
   const [page, setPage] = useState(0);
   const [refresh, setRefresh] = useState(0);
   const [detail, setDetail] = useState<EmailDeliveryDetail>();
@@ -389,32 +396,26 @@ export function NotificationsPanel({
               </label>
               <label>
                 Delivery status
-                <select
+                <Dropdown
+                  label="Delivery status"
                   value={status}
-                  onChange={(event) => {
-                    setStatus(event.target.value);
-                    setPage(0);
-                    setConfirmation(undefined);
-                  }}
-                >
-                  <option value="">All delivery statuses</option>
-                  {EMAIL_STATES.filter(
-                    (value) =>
-                      channel === "email" ||
-                      ![
-                        "delivered",
-                        "delayed",
-                        "bounced",
-                        "complained",
-                        "delivery_failed",
-                        "preview",
-                      ].includes(value),
-                  ).map((value) => (
-                    <option key={value} value={value}>
-                      {EMAIL_STATE_LABELS[value]}
-                    </option>
-                  ))}
-                </select>
+                  onValueChange={handleStatusChange}
+                  options={[
+                    { value: "", label: "All delivery statuses" },
+                    ...EMAIL_STATES.filter(
+                      (value) =>
+                        channel === "email" ||
+                        ![
+                          "delivered",
+                          "delayed",
+                          "bounced",
+                          "complained",
+                          "delivery_failed",
+                          "preview",
+                        ].includes(value),
+                    ).map((value) => ({ value, label: EMAIL_STATE_LABELS[value] })),
+                  ]}
+                />
               </label>
             </div>
             <p aria-live="polite">
@@ -477,13 +478,14 @@ export function NotificationsPanel({
                       )}
                     </div>
                     {confirmation?.id === delivery.id && (
-                      <section className="notification-confirm" aria-label="Confirm message retry">
-                        <h4>Retry this saved message?</h4>
-                        <p>
-                          Send the original message to {confirmation.recipient}. This does not
-                          create a request or change its status, schedule, or fare.
-                        </p>
-                        <div className="action-row">
+                      <ConfirmationDialog
+                        open
+                        title="Retry this saved message?"
+                        description={`Send the original message to ${confirmation.recipient}. This does not create a request or change its status, schedule, or fare.`}
+                        busy={busy}
+                        error={error}
+                        onClose={() => setConfirmation(undefined)}
+                        footer={
                           <button
                             className="button button-primary"
                             type="button"
@@ -492,16 +494,8 @@ export function NotificationsPanel({
                           >
                             {busy ? "Sending…" : "Confirm message retry"}
                           </button>
-                          <button
-                            className="text-button"
-                            type="button"
-                            disabled={busy}
-                            onClick={() => setConfirmation(undefined)}
-                          >
-                            Keep current status
-                          </button>
-                        </div>
-                      </section>
+                        }
+                      />
                     )}
                     {detail?.delivery.id === delivery.id &&
                       detail.delivery.attempts === delivery.attempts &&

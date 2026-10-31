@@ -1,12 +1,12 @@
 # Asa Ride
 
 Asa Ride is an independent ride-booking service for Eastern Nigeria. [HANDOVER.md](HANDOVER.md)
-defines the current product direction: email-based ride requests without signup, admin approval,
+defines the product direction: ride requests without signup, admin approval,
 negotiated fares, secure request history, configurable pricing, optional notifications, and Google Calendar linking.
 
-The customer and admin screens are connected. Customers now request rides with email, without a name,
-phone number, account, or password. New requests stay pending until an admin accepts or rejects them.
-Private email links unlock request history. Research routes, area and default distance pricing, fixed prices,
+The customer and admin screens are connected. Customers choose email or WhatsApp as their contact
+method, with no account or password. New requests stay pending until an admin accepts or rejects them.
+Private links sent through the chosen method unlock request history. Research routes, area and default distance pricing, fixed prices,
 upward ₦50 rounding, admin previews, and single-offer negotiation are implemented. Area pricing was
 authorized on 27 October 2026: each route can use one admin-assigned area, with the default rate as
 fallback when its area has no rate. Admin email settings, delivery records, and safe manual retries
@@ -18,11 +18,14 @@ are implemented. Native Resend delivery, signed delivery events, pickup-time exp
 - `/admin`: admin sign-in, request management, scheduling, pricing/locations, location requests, and notifications.
 - `/owner`: compatibility address for the same admin portal.
 - `/status/:token`: private booking details, opened from a booking's status link.
-- `/my-requests`: request an email link, verify it, and view that email's request history.
-- `/request-location`: request a location that is not currently offered.
+- `/my-requests`: choose email or WhatsApp, verify a private link, and view requests for that contact.
+- `/request-location`: compatibility address opening booking with custom pickup entry selected.
 
 Navigation supports direct links and browser back/forward. Frontend production hosting must serve
 `index.html` for these client routes, including private status links. Set `ASA_BOLT_STATIC_DIR` to the compiled frontend directory to serve the SPA and API together. Development uses Vite. Admin API access still requires a valid session token.
+
+Open `/admin` directly to manage the service. Public navigation contains customer actions.
+Replace `BRAND_CONFIG.businessAddress` in `shared/config.ts` with the business address shown in the footer.
 
 ## Local setup
 
@@ -129,23 +132,42 @@ Settings/disconnect/retry operations include `expectedRevision`. The OAuth callb
 requires a valid state bound to a live admin session. Real Google connection remains unverified;
 all current calendar checks use an isolated provider simulation.
 
-## Email requests and private history
+## Contact methods, route reviews and private history
 
-New bookings require `email` and `quotedAmountKobo` alongside the existing route, pickup time, and
-idempotency key. Name and phone are optional legacy fields. The server validates the quote and Lagos
+New bookings use `contactMethod: "email" | "whatsapp"` with the selected `email` or `phone`, and
+`quotedAmountKobo` alongside the route, pickup time and idempotency key. Omitted contact methods
+retain the email-based API behavior. The server validates the quote and Lagos
 pickup time, checks availability, saves a pending request, and records the customer and timestamp.
 Admin acceptance checks availability again; rejection requires a reason and is distinct from cancellation.
 Existing phone-only bookings retain their status, fare, private links, and admin visibility. They are
 never attached to an email merely because someone supplies a matching phone number.
 
-`POST /api/history/link` sends the same generic response whether the email has requests or not.
-The email contains `/my-requests#token=...`; the browser removes the fragment before verification.
+`POST /api/history/link` accepts the same contact method and selected email/phone. It sends the same
+generic response whether the contact has requests or not. The message contains `/my-requests#token=...`;
+the browser removes the fragment before verification. WhatsApp links require the configured HTTPS adapter.
 Opening the link requires an explicit button click. Tokens contain 256 random bits, are stored only as
 SHA-256 hashes, expire after 15 minutes, and can be exchanged once. The resulting 30-minute session
 uses an HttpOnly, SameSite=Strict cookie restricted to `/api/history`, with Secure enabled for HTTPS.
-History reads use only the verified session email and return all its requests, newest first. Closing
+History reads use only the verified session contact and include that contact's saved route reviews.
+Existing email identities keep their stored format; WhatsApp identities use a `whatsapp:+234…` prefix
+in the internal identity column. Closing
 the private session revokes it on the server. Link requests, verification attempts, and new bookings
 are rate limited in SQLite; rate limits use the direct peer IP by default. A single trusted reverse proxy can be explicitly configured; see `RUNBOOK.md`.
+
+The booking form uses a native date picker, then a time picker. Pickup hours are fetched for the
+selected date and checked again by the server. Pickup notes stay visible. Choosing an unlisted
+location or a map pin submits a route review containing the whole trip and contact details,
+without an automatic fare or a confirmed ride. The admin sees pending reviews in Requests and
+Route reviews. Reviewing locations keeps fare agreement and ride confirmation separate.
+Route review persistence adds email, trip details and an idempotency key to existing location requests.
+
+**Choose on map** opens a lazy-loaded Leaflet map with OpenStreetMap tiles and visible attribution.
+Pan or click the map to position the center pin, then confirm. Pins are saved with the review and
+can be opened from admin, confirmation and private history. Map settings are in `shared/config.ts`.
+The map picker uses no API key, address search or browser location permission. Road-distance
+calculation uses the server-only OpenRouteService key described below. Text entry remains available. The public tile service is best effort and must follow the
+[OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/); reassess hosting
+as traffic grows. Tile images send the site origin as their referrer; private URL paths remain hidden.
 
 The browser defaults to `/api`; Vite proxies it to the local API. In production, route `/api` to the
 Node service on the same site. Set `ASA_BOLT_PUBLIC_APP_URL` to the frontend's exact HTTPS origin:
@@ -282,9 +304,10 @@ recipient-server acceptance; inbox placement and reading are not claimed.
 Stable delivery keys, sender/content snapshots, signature verification, duplicate event handling, and
 out-of-order delivery states are implemented. Uncertain Resend retries use a conservative 23-hour window.
 
-WhatsApp is optional and disabled by default. Customers explicitly opt in with `whatsappUpdates`
-and `whatsappNumber`; legacy phone numbers do not imply consent. Opt-in/out times are preserved.
-Customers can stop updates in private request details using their request email. Admin controls,
+The current booking form offers WhatsApp as an alternative contact and private-access method.
+It no longer offers an updates opt-in checkbox, and choosing WhatsApp does not subscribe a customer
+to automatic updates. Existing `whatsappUpdates` consent records and opt-out controls are preserved
+for older requests. Admin controls,
 message snapshots, attempts, searches, and safe retries are separate from email, under
 `/api/owner/whatsapp-notifications` with the same settings/deliveries API structure. Its legacy
 `emailEnabled` settings field serves as that channel's master switch. The configured HTTPS adapter
@@ -321,9 +344,37 @@ Use a single app process with local persistent SQLite storage. Builds remain exc
 
 Ride duration estimates remain deferred. Google account/calendar configuration is postponed at the
 owner's request while its integration is implemented. No payments, live GPS,
-driver accounts, automated driver assignment, ratings, or map autocomplete are in this MVP. Google Maps
-links and landmark notes are supported without a paid map integration. The current release checklist
+driver accounts, automated driver assignment, ratings, or map autocomplete are in this MVP. Leaflet
+pin selection uses OpenStreetMap tiles; custom/pinned trips need admin review and a separate fare.
+The current release checklist
 is [TODO.md](TODO.md).
 
 For stakeholder testing, use [TESTING_CHECKLIST.md](TESTING_CHECKLIST.md), which lists the features,
 setup prerequisites, expected results, and integrations that still need live configuration.
+
+## Route pricing and road distances — 31 October 2026
+
+In **Admin → Locations**, use **Add location** to save a named location and its map pin.
+Select two existing locations with their checkboxes, then choose **Price route**. Selection persists
+across location pages and searches. Drag the two locations into the required From/To order; keyboard
+users can use the drag handle's up/down arrow keys. The modal loads the saved price for that direction,
+or generates an initial price when none exists. Edit the price directly or choose **Generate price**,
+then **Save price**. The reverse direction has its own price. Generated prices use the current area
+or default rate; manual prices take precedence for that direction. Existing saved bookings retain
+their original fares. Add location remains the sole location-creation action.
+
+Set `OPENROUTESERVICE_API_KEY` on the server to enable road-distance calculation. Requests use the
+OpenRouteService driving-car directions and matrix endpoints at `https://api.heigit.org/openrouteservice`.
+The key stays on the server. Directed distances are cached for 30 days. Booking selections show
+catalogue distance for existing routes; custom pins can calculate road distance and still follow
+the existing admin-review flow. A distance alone does not confirm or price a custom trip.
+
+The owner approved the workbook default rate **₦1,020.408163265306/km** and activation of priced
+research/catalogue routes. The versioned seed preserves existing rate edits, fixed fares and stored
+booking prices. The public source files are `server/data/eastern-locations.json` and
+`server/data/eastern-road-distances.json`; the local generation result is in
+`outputs/eastern-catalogue/summary.json`. The generated catalogue uses OpenStreetMap city/town-centre
+pins across Abia, Anambra, Ebonyi, Enugu and Imo, with OpenRouteService road distances. Retain the
+source provenance and map attribution. These town-centre pins represent places, not individual doors.
+The business address is **52 School road by Stadium, Shop No. 61, Umuahia, Abia State**;
+its exact shop pin can be set through Edit location.

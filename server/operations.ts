@@ -23,6 +23,8 @@ export class ApiLimits {
     this.consume(`api:${ip}`, 600, 60_000);
     if (request.method === "POST" && pathname === "/api/owner/login")
       this.consume(`login:${ip}`, 10, 15 * 60_000);
+    if (request.method === "POST" && pathname === "/api/routing/distance")
+      this.consume(`routing:${ip}`, 12, 60_000);
     if (request.method === "POST" && pathname === "/api/location-requests")
       this.consume(`location:${ip}`, 10, 15 * 60_000);
     if (
@@ -55,7 +57,7 @@ export function secureHeaders(response: ServerResponse, production: boolean): vo
     response.setHeader("Strict-Transport-Security", "max-age=31536000");
     response.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
     );
   }
 }

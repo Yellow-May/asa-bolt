@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { Dropdown } from "./Dropdown";
+import { useCallback, useRef, useState } from "react";
 import type { Booking, OperatingSchedule, ScheduleException } from "../../shared/contracts";
 import {
   localPickupParts,
@@ -36,6 +37,10 @@ export function SchedulingPanel({
   onOpenRequest: (id: string) => void;
 }) {
   const [window, setWindow] = useState(initialWindow);
+  const handleDayChange = useCallback(
+    (value: string) => setWindow((current) => ({ ...current, dayOfWeek: value })),
+    [],
+  );
   const [closure, setClosure] = useState({ date: today(), note: "" });
   const [date, setDate] = useState("");
   const [includePast, setIncludePast] = useState(false);
@@ -262,16 +267,12 @@ export function SchedulingPanel({
           <div className="form-grid">
             <label>
               Day
-              <select
+              <Dropdown
+                label="Day"
                 value={window.dayOfWeek}
-                onChange={(event) => setWindow({ ...window, dayOfWeek: event.target.value })}
-              >
-                {days.map((day, index) => (
-                  <option key={day} value={index}>
-                    {day}
-                  </option>
-                ))}
-              </select>
+                onValueChange={handleDayChange}
+                options={days.map((day, index) => ({ value: String(index), label: day }))}
+              />
             </label>
             <label>
               Opens
