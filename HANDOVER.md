@@ -60,7 +60,7 @@ Make both portals work comfortably on a phone: short forms, large buttons, reada
 
 Use [the research workbook](outputs/abia_google_maps_distance_matrix/abia_google_maps_distance_matrix.xlsx) as the starting dataset. Its sheets are `Calculator`, `Locations`, `Routes`, `LGA Map`, and `Sources`.
 
-The workbook records 27 reference locations and 351 route pairs, collected on 14 September 2026. It uses School Road to Umudike as a reference: 9.8 km for ₦10,000. That gives a suggested starting rate of ₦10,000 ÷ 9.8, or about ₦1,020.41 per km. This is a workbook assumption for the admin to review, not an approved fare for every area.
+The workbook records 27 reference locations and 351 route pairs, collected on 14 September 2026. It uses School Road to Umudike as a reference: 9.8 km for ₦10,000. That gives a suggested starting rate of ₦10,000 ÷ 9.8, or about ₦1,020.41 per km. On 31 October 2026 the owner approved this precise rate, ₦1,020.408163265306/km, as the default for the expanded catalogue. Admin area rates and directional manual prices remain editable and take precedence as configured.
 
 Use kilometres consistently because that is the unit in the research. Import the locations and route distances, retain their source links, and let the admin review and publish the routes they serve. The workbook treats each route pair as reversible. Use that as the initial distance assumption and allow the admin to correct distances or set a different price for either direction.
 
@@ -130,3 +130,11 @@ Manually demonstrate these outcomes:
 - Both portals are usable on mobile, and existing request prices stay unchanged after pricing edits.
 
 Follow the owner's working rules: ask before using Chrome tools, complete manual checks before requesting permission to write tests, and get explicit permission before regression tests. Do not run builds; use only the permitted formatting and lint checks. Do not use subagents.
+
+## Admin location/pricing flow — 31 October 2026
+
+Add location saves a location through the existing editor. Select exactly two catalogue locations
+with checkboxes to open Price route. Drag to choose the starting location; load that direction's
+previous price, auto-generate the first price, and allow regeneration or direct editing before Save.
+A → B and B → A retain independent prices. The duplicate map-pricing entry points and endpoint-creation
+form have been removed. Road-distance setup and source data are documented in README.md.

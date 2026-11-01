@@ -1,0 +1,277 @@
+:root {
+  --control-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --control-shadow: 0 8px 24px #1111111a;
+  --overlay-backdrop: #11111166;
+}
+.dropdown {
+  min-width: 0;
+  width: 100%;
+}
+.dropdown-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  margin-top: 0.45rem;
+  padding: 0.4rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: 0.625rem;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  letter-spacing: normal;
+}
+.dropdown-trigger > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dropdown-trigger[data-placeholder] {
+  color: var(--muted);
+}
+.dropdown-trigger:focus-visible {
+  outline: 2px solid var(--leaf);
+  outline-offset: 2px;
+}
+.dropdown-trigger[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+.dropdown-trigger:disabled {
+  cursor: not-allowed;
+  background: var(--paper-deep);
+  color: var(--muted);
+}
+.dropdown-chevron {
+  flex-shrink: 0;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+.dropdown-content {
+  z-index: 110;
+  width: var(--radix-select-trigger-width);
+  max-width: calc(100vw - 24px);
+  max-height: min(320px, var(--radix-select-content-available-height));
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  box-shadow: var(--control-shadow);
+  font-family: var(--control-font);
+  font-size: 0.875rem;
+}
+.dropdown-viewport {
+  padding: 0.3rem;
+}
+.dropdown-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  outline: none;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+.dropdown-option[data-highlighted] {
+  background: var(--paper-deep);
+}
+.dropdown-option[data-state="checked"] {
+  color: var(--leaf);
+  font-weight: 600;
+}
+.dropdown-option[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dropdown-check {
+  flex-shrink: 0;
+}
+.dropdown-scroll {
+  text-align: center;
+  padding: 0.25rem;
+  background: var(--paper);
+}
+.dropdown-empty {
+  margin: 0;
+  padding: 0.75rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.dropdown-error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-line);
+  border-radius: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  margin: 0.375rem 0 0;
+}
+.confirmation-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--overlay-backdrop);
+}
+.confirmation-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 101;
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--control-shadow);
+  font-family: var(--control-font);
+}
+.confirmation-header {
+  padding: 1rem 1rem 0;
+  flex-shrink: 0;
+}
+.confirmation-header h2 {
+  margin: 0;
+  font: 650 1.125rem/1.4 var(--control-font);
+  letter-spacing: -0.02em;
+}
+.confirmation-body {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 0.625rem 1rem 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+.confirmation-body > p:first-child {
+  margin: 0 0 1rem;
+  color: var(--muted);
+}
+.confirmation-body > p:last-child {
+  margin-bottom: 0;
+}
+.confirmation-body .checkbox-label {
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.confirmation-body input {
+  font-size: 0.875rem;
+}
+.confirmation-body :is(input:not([type="checkbox"]):not([type="radio"]), .dropdown-trigger) {
+  height: 36px;
+  min-height: 36px;
+  padding: 0.375rem 0.625rem;
+}
+.confirmation-body textarea {
+  min-height: 80px;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.875rem;
+}
+.confirmation-body .stack-form {
+  gap: 0.75rem;
+}
+.confirmation-body .field-error {
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  background: var(--danger-soft);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+}
+.confirmation-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--line);
+  flex-shrink: 0;
+}
+.confirmation-footer .button {
+  font-family: var(--control-font);
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 0.5rem;
+}
+.confirmation-footer .button-danger {
+  color: var(--cream);
+  background: var(--danger);
+  border-color: var(--danger);
+}
+@media (max-width: 400px) {
+  .confirmation-footer {
+    flex-wrap: wrap;
+  }
+  .confirmation-footer .button {
+    flex: 1 1 auto;
+  }
+}
+@media (max-width: 760px) {
+  .dropdown-trigger,
+  .dropdown-content,
+  .confirmation-body :is(input, textarea),
+  .confirmation-body {
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  .dropdown-option {
+    min-height: 36px;
+    padding: 0.5rem 0.625rem;
+  }
+  .confirmation-header h2 {
+    font-size: 1rem;
+    line-height: 1.35;
+  }
+  .dropdown-trigger,
+  .confirmation-body :is(input:not([type="checkbox"]):not([type="radio"]), .dropdown-trigger) {
+    height: 32px;
+    min-height: 32px;
+    padding: 0.25rem 0.5rem;
+  }
+  .confirmation-dialog {
+    width: min(480px, calc(100vw - 24px));
+    max-height: calc(100dvh - 24px);
+  }
+  .confirmation-header {
+    padding: 0.875rem 0.875rem 0;
+  }
+  .confirmation-body {
+    padding: 0.5rem 0.875rem 0.875rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+  .confirmation-body > p:first-child {
+    margin-bottom: 0.75rem;
+  }
+  .confirmation-body label {
+    font-size: 0.75rem;
+  }
+  .confirmation-body textarea {
+    height: 64px;
+    min-height: 64px;
+    padding: 0.375rem 0.5rem;
+  }
+  .confirmation-footer {
+    padding: 0.625rem 0.875rem;
+  }
+  .confirmation-footer .button {
+    min-height: 36px;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+}

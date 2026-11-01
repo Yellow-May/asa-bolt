@@ -1,16 +1,21 @@
+import { HttpError } from "../errors.js";
 import { randomUUID } from "node:crypto";
 import type { Database } from "./database.js";
 import { dayLabel } from "./seed.js";
 import type {
   FareRule,
+  FarePreview,
   LocationRequest,
   OperatingSchedule,
   ServiceLocation,
   ScheduleException,
   Booking,
   BookingStatusEvent,
+  BookingScheduleEvent,
 } from "../../shared/contracts.js";
+import { koboToNaira, roundNairaUpTo50 } from "../domain/pricing.js";
 import type { BookingStatus, RequestStatus } from "../../shared/config.js";
+import type { EmailState } from "../../shared/notifications.js";
 
 type Row = Record<string, unknown>;
 
@@ -21,12 +26,24 @@ export interface BookingRecord {
   idempotencyKey: string;
   customerName: string;
   phone: string;
+  email: string;
+  whatsappNumber?: string;
+  whatsappConsentAt?: string;
+  whatsappOptOutAt?: string;
+  rejectionReason: string;
   originId: string;
   destinationId: string;
   pickupNote: string;
   pickupAt: string;
+  reservedMinutes?: number | null;
+  scheduleRevision?: number;
   fareAmountKobo: number;
   fareCurrency: string;
+  fareSnapshot?: string;
+  proposedAmountNaira?: string;
+  proposedAmountKobo?: number;
+  negotiationNote?: string;
+  agreedAmountKobo?: number;
   status: BookingStatus;
   cancellationReason: string;
   notificationStatus: string;
@@ -60,17 +77,22 @@ export class Repository {
   }
 
   findFare(originId: string, destinationId: string, date: string): FareRule {
+    const fare = this.findOptionalFare(originId, destinationId, date);
+    if (!fare) throw new Error("No active fare is configured for this route.");
+    return fare;
+  }
+
+  findOptionalFare(originId: string, destinationId: string, date: string): FareRule | undefined {
     const row = this.database.connection
       .prepare(
         "SELECT fare_rules.*, origin.name AS origin_name, destination.name AS destination_name " +
           "FROM fare_rules JOIN service_locations origin ON origin.id = fare_rules.origin_id " +
           "JOIN service_locations destination ON destination.id = fare_rules.destination_id " +
           "WHERE origin_id = ? AND destination_id = ? AND active = 1 AND effective_from <= ? " +
-          "ORDER BY effective_from DESC LIMIT 1",
+          "ORDER BY effective_from DESC, fare_rules.rowid DESC LIMIT 1",
       )
       .get(originId, destinationId, date);
-    if (!row) throw new Error("No active fare is configured for this route.");
-    return toFare(row as Row);
+    return row ? toFare(row as Row) : undefined;
   }
 
   createBooking(record: BookingRecord): void {
@@ -78,7 +100,7 @@ export class Repository {
       .prepare(
         "INSERT INTO bookings (id, reference, access_token, idempotency_key, customer_name, phone, " +
           "origin_id, destination_id, pickup_note, pickup_at, fare_amount_kobo, fare_currency, status, " +
-          "cancellation_reason, notification_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          "cancellation_reason, notification_status, created_at, updated_at, email, rejection_reason, fare_snapshot, proposed_amount_naira, proposed_amount_kobo, negotiation_note, agreed_amount_kobo, whatsapp_number, whatsapp_consent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         record.id,
@@ -98,6 +120,15 @@ export class Repository {
         record.notificationStatus,
         record.createdAt,
         record.updatedAt,
+        record.email,
+        record.rejectionReason,
+        record.fareSnapshot ?? "",
+        record.proposedAmountNaira ?? "",
+        record.proposedAmountKobo ?? null,
+        record.negotiationNote ?? "",
+        record.agreedAmountKobo ?? null,
+        record.whatsappNumber ?? "",
+        record.whatsappConsentAt ?? "",
       );
   }
 
@@ -106,6 +137,20 @@ export class Repository {
       .prepare("SELECT * FROM bookings WHERE idempotency_key = ?")
       .get(key);
     return row ? toBookingRecord(row as Row) : undefined;
+  }
+
+  createBookingRequest(record: BookingRecord, enqueue: () => void): void {
+    const db = this.database.connection;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      this.createBooking(record);
+      this.addBookingEvent(record.id, "", "requested", "", "customer", record.createdAt);
+      enqueue();
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
   }
 
   findBookingByToken(token: string): BookingRecord | undefined {
@@ -127,21 +172,145 @@ export class Repository {
     return rows.map((row) => this.toBooking(row as Row));
   }
 
+  stopWhatsApp(id: string): void {
+    this.database.connection
+      .prepare(
+        "UPDATE bookings SET whatsapp_opt_out_at = ? WHERE id = ? AND whatsapp_opt_out_at = ''",
+      )
+      .run(new Date().toISOString(), id);
+  }
+
+  dueRequests(now: string): string[] {
+    return this.database.connection
+      .prepare(
+        "SELECT id FROM bookings WHERE status = 'requested' AND julianday(pickup_at) <= julianday(?) ORDER BY pickup_at LIMIT 1000",
+      )
+      .all(now)
+      .map((row) => String(row.id));
+  }
+
+  listBookingsByEmail(email: string): Booking[] {
+    const rows = this.database.connection
+      .prepare("SELECT * FROM bookings WHERE email = ? ORDER BY created_at DESC, rowid DESC")
+      .all(email);
+    return rows.map((row) => this.toBooking(row as Row));
+  }
+
+  listBookingsByPhone(phone: string): Booking[] {
+    return this.database.connection
+      .prepare(
+        "SELECT * FROM bookings WHERE phone = ? OR whatsapp_number = ? ORDER BY created_at DESC, rowid DESC",
+      )
+      .all(phone, phone)
+      .map((row) => this.toBooking(row as Row));
+  }
+
   updateBookingStatus(
     id: string,
     status: BookingStatus,
     reason: string,
     actor: string,
     now: string,
+    expectedStatus?: BookingStatus,
+    guard?: (current: BookingRecord) => void,
+    enqueue?: () => void,
   ): void {
-    const current = this.findBookingById(id);
-    if (!current) throw new Error("Booking was not found.");
-    this.database.connection
+    const db = this.database.connection;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.findBookingById(id);
+      if (!current) throw new HttpError(404, "Request not found.");
+      if (expectedStatus && current.status !== expectedStatus)
+        throw new HttpError(409, "This request has already changed. Refresh before deciding.");
+      guard?.(current);
+      const agreed =
+        status === "confirmed"
+          ? (current.proposedAmountKobo ?? current.fareAmountKobo)
+          : current.agreedAmountKobo;
+      db.prepare(
+        "UPDATE bookings SET status = ?, cancellation_reason = ?, rejection_reason = ?, agreed_amount_kobo = ?, updated_at = ? WHERE id = ?",
+      ).run(
+        status,
+        status === "cancelled" ? reason : current.cancellationReason,
+        status === "rejected" ? reason : current.rejectionReason,
+        agreed ?? null,
+        now,
+        id,
+      );
+      this.addBookingEvent(id, current.status, status, reason, actor, now);
+      enqueue?.();
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  updateBookingSchedule(
+    id: string,
+    pickupAt: string,
+    reservedMinutes: number | null,
+    revision: number,
+    reason: string,
+    guard: (current: BookingRecord) => void,
+    enqueue?: () => void,
+  ): boolean {
+    const db = this.database.connection;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.findBookingById(id);
+      if (!current) throw new HttpError(404, "Request not found.");
+      if (!["requested", "confirmed"].includes(current.status))
+        throw new HttpError(409, "Only pending or accepted rides can be rescheduled.");
+      if (current.pickupAt === pickupAt && (current.reservedMinutes ?? null) === reservedMinutes) {
+        db.exec("COMMIT");
+        return false;
+      }
+      if ((current.scheduleRevision ?? 0) !== revision)
+        throw new HttpError(409, "This ride's schedule has changed. Refresh before editing it.");
+      guard(current);
+      const now = new Date().toISOString();
+      db.prepare(
+        "UPDATE bookings SET pickup_at = ?, reserved_minutes = ?, schedule_revision = schedule_revision + 1, updated_at = ? WHERE id = ?",
+      ).run(pickupAt, reservedMinutes, now, id);
+      db.prepare(
+        "INSERT INTO booking_schedule_events (id, booking_id, from_pickup_at, to_pickup_at, from_reserved_minutes, to_reserved_minutes, reason, actor, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'owner', ?)",
+      ).run(
+        randomUUID(),
+        id,
+        current.pickupAt,
+        pickupAt,
+        current.reservedMinutes ?? null,
+        reservedMinutes,
+        reason,
+        now,
+      );
+      enqueue?.();
+      db.exec("COMMIT");
+      return true;
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  listScheduleEvents(id: string): BookingScheduleEvent[] {
+    return this.database.connection
       .prepare(
-        "UPDATE bookings SET status = ?, cancellation_reason = ?, updated_at = ? WHERE id = ?",
+        "SELECT * FROM booking_schedule_events WHERE booking_id = ? ORDER BY created_at, rowid",
       )
-      .run(status, reason, now, id);
-    this.addBookingEvent(id, current.status, status, reason, actor, now);
+      .all(id)
+      .map((row) => ({
+        id: String(row.id),
+        fromPickupAt: String(row.from_pickup_at),
+        toPickupAt: String(row.to_pickup_at),
+        fromReservedMinutes:
+          row.from_reserved_minutes == null ? null : Number(row.from_reserved_minutes),
+        toReservedMinutes: row.to_reserved_minutes == null ? null : Number(row.to_reserved_minutes),
+        reason: String(row.reason),
+        actor: "owner",
+        createdAt: String(row.created_at),
+      }));
   }
 
   addBookingEvent(
@@ -188,11 +357,34 @@ export class Repository {
       accessToken: record.accessToken,
       customerName: record.customerName,
       phone: record.phone,
+      email: record.email,
+      whatsappNumber: record.whatsappNumber,
+      whatsappConsentAt: record.whatsappConsentAt,
+      whatsappOptOutAt: record.whatsappOptOutAt,
+      rejectionReason: record.rejectionReason,
+      offer:
+        record.proposedAmountKobo === undefined
+          ? undefined
+          : {
+              amountNaira: record.proposedAmountNaira ?? "",
+              roundedAmountKobo: record.proposedAmountKobo,
+              note: record.negotiationNote ?? "",
+            },
+      agreedAmountKobo:
+        record.agreedAmountKobo ??
+        (events.some((event) => event.toStatus === "confirmed") ||
+        ["confirmed", "picked_up", "arrived", "completed"].includes(record.status)
+          ? record.fareAmountKobo
+          : undefined),
       origin,
       destination,
       pickupNote: record.pickupNote,
       pickupAt: record.pickupAt,
+      reservedMinutes: record.reservedMinutes ?? null,
+      scheduleRevision: record.scheduleRevision ?? 0,
+      scheduleEvents: this.listScheduleEvents(record.id),
       fare: {
+        ...(record.fareSnapshot ? (JSON.parse(record.fareSnapshot) as FarePreview) : {}),
         amountKobo: record.fareAmountKobo,
         currency: record.fareCurrency,
         originName: origin.name,
@@ -201,6 +393,7 @@ export class Repository {
       status: record.status,
       cancellationReason: record.cancellationReason,
       notificationStatus: record.notificationStatus,
+      customerEmailStatus: this.latestCustomerEmailStatus(record.id),
       createdAt: record.createdAt,
       events,
     };
@@ -214,13 +407,22 @@ export class Repository {
     return toLocation(row as Row);
   }
 
+  private latestCustomerEmailStatus(id: string): EmailState | undefined {
+    const row = this.database.connection
+      .prepare(
+        "SELECT status FROM email_deliveries WHERE booking_id = ? AND audience IN ('customer', 'both') ORDER BY created_at DESC, rowid DESC LIMIT 1",
+      )
+      .get(id);
+    return row ? (String(row.status) as EmailState) : undefined;
+  }
+
   listFares(): FareRule[] {
     const rows = this.database.connection
       .prepare(
         "SELECT fare_rules.*, origin.name AS origin_name, destination.name AS destination_name " +
           "FROM fare_rules JOIN service_locations origin ON origin.id = fare_rules.origin_id " +
           "JOIN service_locations destination ON destination.id = fare_rules.destination_id " +
-          "ORDER BY origin.name, destination.name, effective_from DESC",
+          "ORDER BY origin.name, destination.name, effective_from DESC, fare_rules.rowid DESC",
       )
       .all();
     return rows.map((row) => toFare(row as Row));
@@ -236,11 +438,22 @@ export class Repository {
   createLocationRequest(
     input: Omit<LocationRequest, "id" | "status" | "responseNote" | "createdAt">,
   ): LocationRequest {
+    if (input.idempotencyKey) {
+      const existing = this.database.connection
+        .prepare("SELECT * FROM location_requests WHERE idempotency_key = ?")
+        .get(input.idempotencyKey);
+      if (existing) {
+        const request = toLocationRequest(existing as Row);
+        if ((request.email ?? "") !== (input.email ?? "") || request.phone !== input.phone)
+          throw new HttpError(409, "Start a new request with a new request key.");
+        return request;
+      }
+    }
     const id = randomUUID();
     const createdAt = new Date().toISOString();
     this.database.connection
       .prepare(
-        "INSERT INTO location_requests (id, requester_name, phone, location_name, landmark, maps_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO location_requests (id, requester_name, phone, location_name, landmark, maps_url, created_at, email, trip_details, idempotency_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         id,
@@ -250,6 +463,9 @@ export class Repository {
         input.landmark,
         input.mapsUrl,
         createdAt,
+        input.email ?? "",
+        input.trip ? JSON.stringify(input.trip) : "",
+        input.idempotencyKey ?? "",
       );
     return {
       ...input,
@@ -282,7 +498,18 @@ export class Repository {
     this.database.connection
       .prepare("UPDATE location_requests SET status = ?, response_note = ? WHERE id = ?")
       .run(status, responseNote, id);
-    if (status === "approved") this.publishRequestedLocation(request);
+    if (status === "approved") {
+      const names = toLocationRequest(request).trip?.customLocations;
+      if (names?.length)
+        names.forEach((name, index) =>
+          this.publishRequestedLocation({
+            ...request,
+            id: `${String(request.id)}-${index}`,
+            location_name: name,
+          }),
+        );
+      else if (!toLocationRequest(request).trip) this.publishRequestedLocation(request);
+    }
   }
 
   saveSchedule(input: OperatingSchedule): void {
@@ -362,6 +589,10 @@ function toLocation(row: Row): ServiceLocation {
     mapsUrl: String(row.maps_url),
     coordinates: String(row.coordinates),
     published: Number(row.published) === 1,
+    researchId: String(row.research_id ?? ""),
+    researchArea: String(row.research_area ?? ""),
+    researchCategory: String(row.research_category ?? ""),
+    researchSourceUrl: String(row.research_source_url ?? ""),
   };
 }
 
@@ -392,6 +623,7 @@ function toFare(row: Row): FareRule {
     originId: String(row.origin_id),
     destinationId: String(row.destination_id),
     amountKobo: Number(row.amount_kobo),
+    roundedAmountKobo: roundNairaUpTo50(koboToNaira(Number(row.amount_kobo))),
     currency: String(row.currency),
     effectiveFrom: String(row.effective_from),
     active: Number(row.active) === 1,
@@ -408,12 +640,25 @@ function toBookingRecord(row: Row): BookingRecord {
     idempotencyKey: String(row.idempotency_key),
     customerName: String(row.customer_name),
     phone: String(row.phone),
+    email: String(row.email ?? ""),
+    whatsappNumber: String(row.whatsapp_number ?? ""),
+    whatsappConsentAt: String(row.whatsapp_consent_at ?? ""),
+    whatsappOptOutAt: String(row.whatsapp_opt_out_at ?? ""),
+    rejectionReason: String(row.rejection_reason ?? ""),
     originId: String(row.origin_id),
     destinationId: String(row.destination_id),
     pickupNote: String(row.pickup_note),
     pickupAt: String(row.pickup_at),
+    reservedMinutes: row.reserved_minutes == null ? null : Number(row.reserved_minutes),
+    scheduleRevision: Number(row.schedule_revision ?? 0),
     fareAmountKobo: Number(row.fare_amount_kobo),
     fareCurrency: String(row.fare_currency),
+    fareSnapshot: String(row.fare_snapshot ?? ""),
+    proposedAmountNaira: String(row.proposed_amount_naira ?? ""),
+    proposedAmountKobo:
+      row.proposed_amount_kobo == null ? undefined : Number(row.proposed_amount_kobo),
+    negotiationNote: String(row.negotiation_note ?? ""),
+    agreedAmountKobo: row.agreed_amount_kobo == null ? undefined : Number(row.agreed_amount_kobo),
     status: String(row.status) as BookingStatus,
     cancellationReason: String(row.cancellation_reason),
     notificationStatus: String(row.notification_status),
@@ -427,6 +672,10 @@ function toLocationRequest(row: Row): LocationRequest {
     id: String(row.id),
     requesterName: String(row.requester_name),
     phone: String(row.phone),
+    email: String(row.email ?? ""),
+    trip: row.trip_details
+      ? (JSON.parse(String(row.trip_details)) as LocationRequest["trip"])
+      : undefined,
     locationName: String(row.location_name),
     landmark: String(row.landmark),
     mapsUrl: String(row.maps_url),
