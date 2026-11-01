@@ -332,6 +332,29 @@ authorized updating/running the automated tests on 24 October 2026. See `plan.md
 
 ## Release readiness
 
+### Search visibility
+
+The public booking page uses `https://www.asa-express.com/` as its canonical URL.
+`index.html` includes its search description and Open Graph/Twitter sharing metadata using the
+existing brand icon. `public/sitemap.xml` lists the booking homepage, and `public/robots.txt`
+advertises that sitemap while excluding API crawling. Allow crawlers to fetch the other pages
+so they can read their `noindex` directives. Admin, history, private status, location-entry and
+missing pages receive `noindex` metadata on client navigation. The Node static server sends
+`X-Robots-Tag` for HTML outside the homepage; `vercel.json` provides the header and SPA rewrites
+for the known non-homepage routes on Vercel. Authentication and private-link checks continue
+to control access to booking data.
+
+Deploy these files with the booking app, then confirm the homepage, `/robots.txt`, `/sitemap.xml`
+and the private-page response headers on the public domain. Google still needs to render the
+React app to see the booking form. In Google Search Console, verify the `asa-express.com` domain
+property using Google's DNS TXT record at the domain's authoritative DNS provider. Submit
+`https://www.asa-express.com/sitemap.xml` once it is publicly available, inspect the homepage,
+and request indexing. Domain verification, sitemap acceptance and actual indexing are separate
+steps; check each result in Search Console. If the public domain changes, update the canonical,
+sharing URLs, robots sitemap reference and sitemap location together.
+
+### Hosting
+
 The repository includes a Node 24 Dockerfile, same-origin SPA/API hosting, a Caddy/Compose HTTPS
 configuration, persistent database/backup volumes, health checks, strong production password checks,
 SQLite-backed API/login limits, restricted proxy trust, security headers, redacted request logging,

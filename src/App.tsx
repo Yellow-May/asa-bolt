@@ -5,6 +5,7 @@ import { BookingPage } from "./components/BookingPage";
 import { LocationRequestPage } from "./components/LocationRequestPage";
 import { StatusPage } from "./components/StatusPage";
 import { MyRequestsPage } from "./components/MyRequestsPage";
+import { updatePageMetadata } from "./seo";
 
 const OwnerDashboard = lazy(() =>
   import("./components/OwnerDashboard").then((module) => ({ default: module.OwnerDashboard })),
@@ -84,7 +85,8 @@ export function App() {
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    document.title = `${pageTitles[resolveRoute(path).page]} · ${BRAND_CONFIG.name}`;
+    const page = resolveRoute(path).page;
+    updatePageMetadata(page, pageTitles[page]);
     contentRef.current?.focus({ preventScroll: true });
     window.scrollTo(0, 0);
   }, [path]);

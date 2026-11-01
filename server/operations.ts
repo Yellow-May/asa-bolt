@@ -63,6 +63,8 @@ export function secureHeaders(response: ServerResponse, production: boolean): vo
 }
 
 const contentTypes: Record<string, string> = {
+  ".txt": "text/plain; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
   ".webmanifest": "application/manifest+json",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -106,6 +108,9 @@ export async function serveFrontend(
   }
   if (asset && /^\/assets\/.+-[A-Za-z0-9_-]{8,}\.[a-z0-9]+$/.test(decoded))
     response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+  if (type.startsWith("text/html") && decoded !== "/" && decoded !== "/index.html") {
+    response.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+  }
   response.writeHead(200, { "Content-Type": type });
   response.end(request.method === "HEAD" ? undefined : body);
 }
