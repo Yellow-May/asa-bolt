@@ -10,7 +10,7 @@ import {
 } from "../../../shared/notifications.js";
 import { normalizePhone, normalizeEmail } from "../../domain/rules.js";
 import { HttpError } from "../../errors.js";
-import type { Database } from "../database.js";
+import type { ApplicationDatabase as Database } from "../database.js";
 import type { ResendEvent } from "./resend.js";
 
 type Row = Record<string, unknown>;
@@ -196,19 +196,14 @@ export class EmailStore {
     const reason = "The send was interrupted. Provider acceptance is unknown.";
     const now = new Date().toISOString();
     const cutoff = Date.now();
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       db.prepare(
         `UPDATE ${this.channel}_attempts SET status = 'uncertain', error = ?, finished_at = ? WHERE finished_at IS NULL AND delivery_id IN (SELECT id FROM ${this.channel}_deliveries WHERE status = 'sending' AND lease_until <= ?)`,
       ).run(reason, now, cutoff);
       db.prepare(
         `UPDATE ${this.channel}_deliveries SET status = 'uncertain', last_error = ?, lease_until = NULL, updated_at = ? WHERE status = 'sending' AND lease_until <= ?`,
       ).run(reason, now, cutoff);
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    });
   }
 
   get(id: string): StoredEmail {
@@ -230,8 +225,7 @@ export class EmailStore {
   ): StoredEmail {
     const db = this.database.connection,
       now = new Date().toISOString();
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       const result = db
         .prepare(
           `UPDATE ${this.channel}_deliveries SET status = 'sending', last_error = '', attempts = attempts + 1, lease_until = ?, transport_key = ?, provider = ?, reply_to = CASE WHEN sender = '' THEN ? ELSE reply_to END, sender = CASE WHEN sender = '' THEN ? ELSE sender END, updated_at = ? WHERE id = ? AND attempts = ? AND status IN ('queued', 'failed', 'uncertain')`,
@@ -255,12 +249,9 @@ export class EmailStore {
       db.prepare(
         `INSERT INTO ${this.channel}_attempts (delivery_id, attempt_number, status, actor, started_at) VALUES (?, ?, 'sending', ?, ?)`,
       ).run(id, current.attempts, actor, now);
-      db.exec("COMMIT");
+
       return current;
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    });
   }
 
   finish(
@@ -272,8 +263,7 @@ export class EmailStore {
   ): StoredEmail {
     const db = this.database.connection,
       now = new Date().toISOString();
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       db.prepare(
         `UPDATE ${this.channel}_deliveries SET status = CASE WHEN status IN ('accepted', 'delivered', 'bounced', 'complained', 'delivery_failed', 'delayed') THEN status ELSE ? END, last_error = CASE WHEN status IN ('accepted', 'delivered', 'bounced', 'complained', 'delivery_failed', 'delayed') THEN last_error ELSE ? END, provider_message_id = CASE WHEN ? != '' THEN ? ELSE provider_message_id END, lease_until = NULL, updated_at = ? WHERE id = ? AND attempts = ?`,
       ).run(status, error, providerMessageId, providerMessageId, now, id, attempt);
@@ -282,12 +272,9 @@ export class EmailStore {
       ).run(status, error, now, id, attempt);
       const current = this.get(id);
       if (current.providerMessageId) this.applyProviderEvents(id, current.providerMessageId);
-      db.exec("COMMIT");
+
       return this.get(id);
-    } catch (cause) {
-      db.exec("ROLLBACK");
-      throw cause;
-    }
+    });
   }
 
   attempts(id: string): EmailAttempt[] {
@@ -323,15 +310,14 @@ export class EmailStore {
     if (!event.emailId) return;
     const db = this.database.connection,
       hash = createHash("sha256").update(body).digest("hex");
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       const existing = db
         .prepare(`SELECT payload_hash FROM ${this.channel}_provider_events WHERE id = ?`)
         .get(event.id);
       if (existing) {
         if (existing.payload_hash !== hash)
           throw new HttpError(409, "Webhook identifier already used for different data.");
-        db.exec("COMMIT");
+
         return;
       }
       const byMessage = db
@@ -369,11 +355,7 @@ export class EmailStore {
         ).run(event.emailId, String(delivery.id));
         this.applyProviderEvents(String(delivery.id), event.emailId);
       }
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    });
   }
 
   private applyProviderEvents(id: string, messageId: string): void {

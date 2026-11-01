@@ -332,15 +332,40 @@ authorized updating/running the automated tests on 24 October 2026. See `plan.md
 
 ## Release readiness
 
-The repository includes a Node 24 Dockerfile, same-origin SPA/API hosting, a Caddy/Compose HTTPS
-configuration, persistent database/backup volumes, health checks, strong production password checks,
-SQLite-backed API/login limits, restricted proxy trust, security headers, redacted request logging,
-and verified backup/restore commands. See [.env.production.example](.env.production.example) and
-[RUNBOOK.md](RUNBOOK.md). Deployment artifacts have not been built or deployed.
+### Search visibility
 
-Before launch, configure hosting/domain/secrets and Resend, review and publish service data/prices/hours,
-verify real delivery, establish off-host backup/monitoring ownership, and perform release acceptance.
-Use a single app process with local persistent SQLite storage. Builds remain excluded from this work.
+The public booking page uses `https://www.asa-express.com/` as its canonical URL.
+`index.html` includes its search description and Open Graph/Twitter sharing metadata using the
+existing brand icon. `public/sitemap.xml` lists the booking homepage, and `public/robots.txt`
+advertises that sitemap while excluding API crawling. Allow crawlers to fetch the other pages
+so they can read their `noindex` directives. Admin, history, private status, location-entry and
+missing pages receive `noindex` metadata on client navigation. The Node static server sends
+`X-Robots-Tag` for HTML outside the homepage; `vercel.json` provides the header and SPA rewrites
+for the known non-homepage routes on Vercel. Authentication and private-link checks continue
+to control access to booking data.
+
+Deploy these files with the booking app, then confirm the homepage, `/robots.txt`, `/sitemap.xml`
+and the private-page response headers on the public domain. Google still needs to render the
+React app to see the booking form. In Google Search Console, verify the `asa-express.com` domain
+property using Google's DNS TXT record at the domain's authoritative DNS provider. Submit
+`https://www.asa-express.com/sitemap.xml` once it is publicly available, inspect the homepage,
+and request indexing. Domain verification, sitemap acceptance and actual indexing are separate
+steps; check each result in Search Console. If the public domain changes, update the canonical,
+sharing URLs, robots sitemap reference and sitemap location together.
+
+### Hosting
+
+Cloudflare Workers can serve the frontend and API together, with a SQLite-backed Durable Object
+for persistent bookings, pricing, notifications, and admin sessions. `wrangler.jsonc` pins the personal
+Cloudflare account and schedules background processing every minute. Use `npm run dev:cloudflare`
+with a private `.dev.vars` file for local manual checks. Production secrets stay outside Git.
+
+The Node 24 Docker/Compose setup remains available for hosts with persistent storage. Both runtimes
+share the application services, pricing rules, API/login limits, and security headers. See
+[.env.production.example](.env.production.example) and [RUNBOOK.md](RUNBOOK.md) for deployment,
+verification status, and recovery instructions. The full-stack Cloudflare deployment is live at
+`https://www.asa-express.com`, with the apex redirecting to that address. Its health and catalogue
+endpoints respond successfully with 73 published locations and 3,140 routes.
 
 Ride duration estimates remain deferred. Google account/calendar configuration is postponed at the
 owner's request while its integration is implemented. No payments, live GPS,

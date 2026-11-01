@@ -6,6 +6,9 @@ data/*.sqlite
 data/*.sqlite-shm
 data/*.sqlite-wal
 .vercel
+.wrangler/
+.dev.vars
+.dev.vars.*
 
 .env.*
 !.env.example

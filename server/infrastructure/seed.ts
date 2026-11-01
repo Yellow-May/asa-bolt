@@ -1,4 +1,4 @@
-import type { Database } from "./database.js";
+import type { ApplicationDatabase as Database } from "./database.js";
 
 const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 

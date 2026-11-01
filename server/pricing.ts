@@ -15,7 +15,7 @@ import {
   roundNairaUpTo50,
 } from "./domain/pricing.js";
 import { HttpError } from "./errors.js";
-import type { Database } from "./infrastructure/database.js";
+import type { ApplicationDatabase as Database } from "./infrastructure/database.js";
 import type { Repository } from "./infrastructure/repository.js";
 import { routeResearch } from "./infrastructure/research.js";
 
@@ -248,8 +248,7 @@ export class PricingService {
     );
     const savedId = existing ? id : randomUUID();
     const db = this.database.connection;
-    db.exec("SAVEPOINT save_route");
-    try {
+    this.database.transaction(() => {
       db.prepare(
         "INSERT INTO service_routes (id, origin_id, destination_id, distance_km, published, distance_note, pricing_area_id, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET distance_km=excluded.distance_km, published=excluded.published, distance_note=excluded.distance_note, pricing_area_id=excluded.pricing_area_id, updated_at=excluded.updated_at",
       ).run(
@@ -267,11 +266,7 @@ export class PricingService {
           origin.id,
           destination.id,
         );
-      db.exec("RELEASE SAVEPOINT save_route");
-    } catch (error) {
-      db.exec("ROLLBACK TO SAVEPOINT save_route; RELEASE SAVEPOINT save_route");
-      throw error;
-    }
+    });
     return this.findRoute(origin.id, destination.id)!;
   }
 

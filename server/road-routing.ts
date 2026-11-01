@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { MapPoint, RoadDistance } from "../shared/contracts.js";
 import { formatCoordinates } from "../shared/map-points.js";
-import type { Database } from "./infrastructure/database.js";
+import type { ApplicationDatabase as Database } from "./infrastructure/database.js";
 import { HttpError } from "./errors.js";
 
 const apiOrigin = "https://api.heigit.org/openrouteservice";

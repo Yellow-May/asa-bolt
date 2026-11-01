@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
+import researchData from "../data/abia-research.json" with { type: "json" };
 import { randomUUID } from "node:crypto";
-import type { Database } from "./database.js";
+import type { ApplicationDatabase as Database } from "./database.js";
 
 interface ResearchData {
   id: string;
@@ -34,16 +34,13 @@ interface ResearchData {
   }[];
 }
 
-export const routeResearch = JSON.parse(
-  readFileSync(new URL("../data/abia-research.json", import.meta.url), "utf8"),
-) as ResearchData;
+export const routeResearch = researchData as ResearchData;
 
 export function importRouteResearch(database: Database): void {
   const db = database.connection;
   if (db.prepare("SELECT id FROM research_imports WHERE id = ?").get(routeResearch.id)) return;
   const now = new Date().toISOString();
-  db.exec("BEGIN IMMEDIATE");
-  try {
+  return database.transaction(() => {
     const ids = new Map<string, string>();
     for (const location of routeResearch.locations) {
       const existing = db
@@ -105,9 +102,5 @@ export function importRouteResearch(database: Database): void {
     db.prepare(
       "INSERT INTO research_imports (id, source_sha256, imported_at) VALUES (?, ?, ?)",
     ).run(routeResearch.id, routeResearch.sha256, now);
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
+  });
 }
