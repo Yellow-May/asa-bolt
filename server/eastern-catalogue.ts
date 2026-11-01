@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import type { Database } from "./infrastructure/database.js";
+import catalogueData from "./data/eastern-locations.json" with { type: "json" };
+import type { ApplicationDatabase as Database } from "./infrastructure/database.js";
 import type { Repository } from "./infrastructure/repository.js";
 import type { PricingService } from "./pricing.js";
 import { localPickupParts } from "../shared/scheduling.js";
@@ -13,9 +13,7 @@ interface CatalogueEntry {
   point: MapPoint;
 }
 
-const source = JSON.parse(
-  readFileSync(new URL("./data/eastern-locations.json", import.meta.url), "utf8"),
-) as {
+const source = catalogueData as {
   id: string;
   collectedAt: string;
   locations: {
@@ -30,8 +28,7 @@ const source = JSON.parse(
 export function importEasternCatalogue(database: Database): void {
   const db = database.connection;
   if (db.prepare("SELECT id FROM research_imports WHERE id = ?").get(source.id)) return;
-  db.exec("BEGIN IMMEDIATE");
-  try {
+  return database.transaction(() => {
     const entries = source.locations.map((item) => {
       const old = db
         .prepare(
@@ -73,11 +70,7 @@ export function importEasternCatalogue(database: Database): void {
     db.prepare(
       "INSERT INTO research_imports (id, source_sha256, imported_at) VALUES (?, ?, ?)",
     ).run(source.id, "public-osm-node-centres", new Date().toISOString());
-    db.exec("COMMIT");
-  } catch (failure) {
-    db.exec("ROLLBACK");
-    throw failure;
-  }
+  });
 }
 
 export class EasternCatalogue {
@@ -134,8 +127,7 @@ export class EasternCatalogue {
     let updated = 0,
       preserved = 0,
       unavailable = 0;
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       entries.forEach((origin, i) =>
         entries.forEach((destination, j) => {
           if (i === j) return;
@@ -162,12 +154,9 @@ export class EasternCatalogue {
         }),
       );
       const published = this.activatePricedRoutes();
-      db.exec("COMMIT");
+
       return { updated, preserved, unavailable, published };
-    } catch (failure) {
-      db.exec("ROLLBACK");
-      throw failure;
-    }
+    });
   }
   private activatePricedRoutes(): number {
     const { date } = localPickupParts(new Date().toISOString());

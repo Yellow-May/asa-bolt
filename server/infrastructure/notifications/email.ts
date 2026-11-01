@@ -5,7 +5,7 @@ import { BRAND_CONFIG } from "../../../shared/config.js";
 import { agreedFareAmount } from "../../../shared/booking-pricing.js";
 import type { Booking } from "../../../shared/contracts.js";
 import type { NotificationResult } from "./index.js";
-import type { Database } from "../database.js";
+import type { ApplicationDatabase as Database } from "../database.js";
 import { EmailStore, type StoredEmail } from "./store.js";
 import { HttpError } from "../../errors.js";
 import { normalizeEmail } from "../../domain/rules.js";

@@ -1,9 +1,12 @@
-import { backup, DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { mkdir, chmod, open, readdir, unlink, link } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, join, resolve } from "node:path";
 
 export async function snapshotDatabase(source: string, destination: string): Promise<string> {
+  const { backup, DatabaseSync } = process.getBuiltinModule(
+    "node:sqlite",
+  ) as typeof import("node:sqlite");
   if (resolve(source) === resolve(destination))
     throw new Error("The snapshot must use a different path.");
   const reserved = await open(destination, "wx", 0o600);

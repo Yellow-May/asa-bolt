@@ -8,7 +8,7 @@ import type {
 } from "../shared/contracts.js";
 import { parseCoordinates } from "../shared/map-points.js";
 import { localPickupParts } from "../shared/scheduling.js";
-import type { Database } from "./infrastructure/database.js";
+import type { ApplicationDatabase as Database } from "./infrastructure/database.js";
 import type { Repository } from "./infrastructure/repository.js";
 import type { PricingService } from "./pricing.js";
 import type { RoadRouting } from "./road-routing.js";
@@ -114,8 +114,7 @@ export class MapPricing {
   }) {
     const { direction, amount, mode, distanceKm } = input;
     const { database, repository, pricing } = this.dependencies;
-    database.connection.exec("BEGIN IMMEDIATE");
-    try {
+    return database.transaction(() => {
       const route = pricing.saveRoute(direction.route?.id ?? "new", {
         originId: direction.originId,
         destinationId: direction.destinationId,
@@ -148,12 +147,9 @@ export class MapPricing {
         });
       }
       const fare = pricing.preview(direction);
-      database.connection.exec("COMMIT");
+
       return { route, fare };
-    } catch (failure) {
-      database.connection.exec("ROLLBACK");
-      throw failure;
-    }
+    });
   }
 
   private direction(body: Record<string, unknown>): Direction {

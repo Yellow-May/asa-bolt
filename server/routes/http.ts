@@ -17,7 +17,8 @@ import type {
   ServiceLocation,
 } from "../../shared/contracts.js";
 import { BookingApplication } from "../application.js";
-import { Database } from "../infrastructure/database.js";
+import { Database, type ApplicationDatabase } from "../infrastructure/database.js";
+import { AdminSessions } from "../infrastructure/admin-sessions.js";
 import { Repository } from "../infrastructure/repository.js";
 import { CustomerEmail } from "../infrastructure/notifications/email.js";
 import { HISTORY_COOKIE, HISTORY_SESSION_SECONDS, HistoryAccess } from "../history.js";
@@ -50,7 +51,7 @@ interface Runtime {
   repository: Repository;
   bookings: BookingApplication;
   password: string;
-  sessions: Map<string, number>;
+  sessions: AdminSessions;
   history: HistoryAccess;
   pricing: PricingService;
   appOrigin: string;
@@ -60,14 +61,14 @@ interface Runtime {
   trustProxy: boolean;
   production: boolean;
   staticDirectory: string;
-  database: Database;
+  database: ApplicationDatabase;
   calendar: GoogleCalendar;
   mapPricing: MapPricing;
   easternCatalogue: EasternCatalogue;
 }
 
 export interface AppOptions {
-  database?: Database;
+  database?: ApplicationDatabase;
   env?: NodeJS.ProcessEnv;
   notifications?: NotificationGateway;
   emailFetch?: typeof fetch;
@@ -78,15 +79,15 @@ export interface AppOptions {
 export type RequestHandler = ((
   request: IncomingMessage,
   response: ServerResponse,
-) => Promise<void>) & { maintain: () => void };
+) => Promise<void>) & { maintain: () => Promise<void> };
 
 export function createApp(options: AppOptions = {}): Server {
   const handler = createRequestHandler(options);
   const server = createServer(handler);
   let timer: ReturnType<typeof setInterval> | undefined;
   server.on("listening", () => {
-    handler.maintain();
-    timer = setInterval(handler.maintain, 5000);
+    void handler.maintain();
+    timer = setInterval(() => void handler.maintain(), 5000);
     timer.unref();
   });
   server.on("close", () => {
@@ -149,7 +150,7 @@ export function createRequestHandler(options: AppOptions = {}): RequestHandler {
     staticDirectory: env.ASA_BOLT_STATIC_DIR ?? "",
     database,
     calendar,
-    sessions: new Map(),
+    sessions: new AdminSessions(database, password),
     history: new HistoryAccess(database, repository, email, whatsapp),
     appOrigin: email.appOrigin,
     email,
@@ -163,10 +164,9 @@ export function createRequestHandler(options: AppOptions = {}): RequestHandler {
     throw new Error("Backup interval must be at least one hour.");
   const handler = ((request, response) =>
     handleRequest(request, response, runtime)) as RequestHandler;
-  const runMaintenance = () => {
+  const runMaintenance = async () => {
     const now = Date.now();
-    for (const [token, expires] of runtime.sessions)
-      if (expires <= now) runtime.sessions.delete(token);
+    runtime.sessions.cleanup();
     database.connection.prepare("DELETE FROM history_rate_limits WHERE resets_at <= ?").run(now);
     if (
       env.ASA_BOLT_BACKUP_DIR &&
@@ -176,7 +176,7 @@ export function createRequestHandler(options: AppOptions = {}): RequestHandler {
     ) {
       backingUp = true;
       lastBackup = now;
-      void createBackup(database.filePath, env.ASA_BOLT_BACKUP_DIR)
+      await createBackup(database.filePath, env.ASA_BOLT_BACKUP_DIR)
         .then(() => console.info("[operations] database backup verified"))
         .catch(() => {
           console.error("[operations] database backup failed; check storage and permissions");
@@ -193,16 +193,16 @@ export function createRequestHandler(options: AppOptions = {}): RequestHandler {
     }
     if (!delivering) {
       delivering = true;
-      void Promise.all([email.processQueued(), whatsapp.processQueued(), calendar.processQueued()])
+      await Promise.all([email.processQueued(), whatsapp.processQueued(), calendar.processQueued()])
         .catch(() => console.error("[operations] queued email delivery failed"))
         .finally(() => {
           delivering = false;
         });
     }
   };
-  handler.maintain = () => {
+  handler.maintain = async () => {
     try {
-      runMaintenance();
+      await runMaintenance();
     } catch {
       console.error("[operations] maintenance failed; retrying shortly");
     }
@@ -286,11 +286,7 @@ async function handleRequest(
       let result = "connected";
       try {
         await runtime.calendar.completeAuthorization(url.searchParams, (sessionHash) =>
-          [...runtime.sessions].some(
-            ([token, expiresAt]) =>
-              expiresAt > Date.now() &&
-              createHash("sha256").update(token).digest("hex") === sessionHash,
-          ),
+          runtime.sessions.hasHash(sessionHash),
         );
       } catch {
         result = "failed";

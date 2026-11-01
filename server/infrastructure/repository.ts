@@ -1,6 +1,6 @@
 import { HttpError } from "../errors.js";
 import { randomUUID } from "node:crypto";
-import type { Database } from "./database.js";
+import type { ApplicationDatabase as Database } from "./database.js";
 import { dayLabel } from "./seed.js";
 import type {
   FareRule,
@@ -140,17 +140,11 @@ export class Repository {
   }
 
   createBookingRequest(record: BookingRecord, enqueue: () => void): void {
-    const db = this.database.connection;
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       this.createBooking(record);
       this.addBookingEvent(record.id, "", "requested", "", "customer", record.createdAt);
       enqueue();
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    });
   }
 
   findBookingByToken(token: string): BookingRecord | undefined {
@@ -216,8 +210,7 @@ export class Repository {
     enqueue?: () => void,
   ): void {
     const db = this.database.connection;
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       const current = this.findBookingById(id);
       if (!current) throw new HttpError(404, "Request not found.");
       if (expectedStatus && current.status !== expectedStatus)
@@ -239,11 +232,7 @@ export class Repository {
       );
       this.addBookingEvent(id, current.status, status, reason, actor, now);
       enqueue?.();
-      db.exec("COMMIT");
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    });
   }
 
   updateBookingSchedule(
@@ -256,14 +245,12 @@ export class Repository {
     enqueue?: () => void,
   ): boolean {
     const db = this.database.connection;
-    db.exec("BEGIN IMMEDIATE");
-    try {
+    return this.database.transaction(() => {
       const current = this.findBookingById(id);
       if (!current) throw new HttpError(404, "Request not found.");
       if (!["requested", "confirmed"].includes(current.status))
         throw new HttpError(409, "Only pending or accepted rides can be rescheduled.");
       if (current.pickupAt === pickupAt && (current.reservedMinutes ?? null) === reservedMinutes) {
-        db.exec("COMMIT");
         return false;
       }
       if ((current.scheduleRevision ?? 0) !== revision)
@@ -286,12 +273,9 @@ export class Repository {
         now,
       );
       enqueue?.();
-      db.exec("COMMIT");
+
       return true;
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
+    });
   }
 
   listScheduleEvents(id: string): BookingScheduleEvent[] {

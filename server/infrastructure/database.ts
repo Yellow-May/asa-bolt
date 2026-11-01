@@ -1,17 +1,18 @@
 import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
+import type { SqlConnection, SqlDriver } from "./sql-connection.js";
+export type { ApplicationDatabase } from "./sql-connection.js";
 
-export class Database {
-  readonly connection: DatabaseSync;
+export class Database<Connection extends SqlConnection = DatabaseSync> {
+  readonly connection: Connection;
 
-  constructor(readonly filePath: string) {
-    if (filePath !== ":memory:") mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
-    this.connection = new DatabaseSync(filePath);
-    if (filePath !== ":memory:") chmodSync(filePath, 0o600);
-    this.connection.exec(
-      "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
-    );
+  constructor(
+    readonly filePath: string,
+    private readonly driver?: SqlDriver<Connection>,
+  ) {
+    this.connection = (driver?.connection ?? openLocalDatabase(filePath)) as Connection;
     this.connection.exec(schemaSql);
     this.connection.exec(
       schemaSql
@@ -97,6 +98,31 @@ export class Database {
   close(): void {
     this.connection.close();
   }
+
+  transaction<T>(callback: () => T): T {
+    if (this.driver) return this.driver.transaction(callback);
+    const name = `transaction_${randomUUID().replaceAll("-", "")}`;
+    this.connection.exec(`SAVEPOINT ${name}`);
+    try {
+      const result = callback();
+      this.connection.exec(`RELEASE SAVEPOINT ${name}`);
+      return result;
+    } catch (error) {
+      this.connection.exec(`ROLLBACK TO SAVEPOINT ${name}; RELEASE SAVEPOINT ${name}`);
+      throw error;
+    }
+  }
+}
+
+function openLocalDatabase(filePath: string): DatabaseSync {
+  const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite");
+  if (filePath !== ":memory:") mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 });
+  const connection = new DatabaseSync(filePath);
+  if (filePath !== ":memory:") chmodSync(filePath, 0o600);
+  connection.exec(
+    "PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;",
+  );
+  return connection;
 }
 
 const schemaSql = `

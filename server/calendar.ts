@@ -5,7 +5,7 @@ import { CALENDAR_STATES } from "../shared/calendar.js";
 import { BRAND_CONFIG } from "../shared/config.js";
 import { agreedFareAmount } from "../shared/booking-pricing.js";
 import { HttpError } from "./errors.js";
-import type { Database } from "./infrastructure/database.js";
+import type { ApplicationDatabase as Database } from "./infrastructure/database.js";
 import type { Repository } from "./infrastructure/repository.js";
 
 const SCOPES = [

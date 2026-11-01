@@ -355,15 +355,17 @@ sharing URLs, robots sitemap reference and sitemap location together.
 
 ### Hosting
 
-The repository includes a Node 24 Dockerfile, same-origin SPA/API hosting, a Caddy/Compose HTTPS
-configuration, persistent database/backup volumes, health checks, strong production password checks,
-SQLite-backed API/login limits, restricted proxy trust, security headers, redacted request logging,
-and verified backup/restore commands. See [.env.production.example](.env.production.example) and
-[RUNBOOK.md](RUNBOOK.md). Deployment artifacts have not been built or deployed.
+Cloudflare Workers can serve the frontend and API together, with a SQLite-backed Durable Object
+for persistent bookings, pricing, notifications, and admin sessions. `wrangler.jsonc` pins the personal
+Cloudflare account and schedules background processing every minute. Use `npm run dev:cloudflare`
+with a private `.dev.vars` file for local manual checks. Production secrets stay outside Git.
 
-Before launch, configure hosting/domain/secrets and Resend, review and publish service data/prices/hours,
-verify real delivery, establish off-host backup/monitoring ownership, and perform release acceptance.
-Use a single app process with local persistent SQLite storage. Builds remain excluded from this work.
+The Node 24 Docker/Compose setup remains available for hosts with persistent storage. Both runtimes
+share the application services, pricing rules, API/login limits, and security headers. See
+[.env.production.example](.env.production.example) and [RUNBOOK.md](RUNBOOK.md) for deployment,
+verification status, and recovery instructions. The full-stack Cloudflare deployment is live at
+`https://www.asa-express.com`, with the apex redirecting to that address. Its health and catalogue
+endpoints respond successfully with 73 published locations and 3,140 routes.
 
 Ride duration estimates remain deferred. Google account/calendar configuration is postponed at the
 owner's request while its integration is implemented. No payments, live GPS,

@@ -1,12 +1,9 @@
-import { readFileSync } from "node:fs";
+import roadPrices from "../data/eastern-road-distances.json" with { type: "json" };
 import { createHash } from "node:crypto";
-import type { Database } from "./database.js";
+import type { ApplicationDatabase as Database } from "./database.js";
 
-const sourceText = readFileSync(
-  new URL("../data/eastern-road-distances.json", import.meta.url),
-  "utf8",
-);
-const source = JSON.parse(sourceText) as {
+const sourceText = JSON.stringify(roadPrices);
+const source = roadPrices as {
   id: string;
   approvedDefaultRatePerKm: string;
   routes: { id: string; distanceKm: string; calculatedAt: string }[];
@@ -15,8 +12,7 @@ const source = JSON.parse(sourceText) as {
 export function importEasternRoadPrices(database: Database): void {
   const db = database.connection;
   if (db.prepare("SELECT id FROM research_imports WHERE id=?").get(source.id)) return;
-  db.exec("BEGIN IMMEDIATE");
-  try {
+  return database.transaction(() => {
     for (const route of source.routes)
       db.prepare(
         "UPDATE service_routes SET distance_km=?, source_label=?, distance_note=?, updated_at=? WHERE id=? AND distance_km IS NULL",
@@ -40,9 +36,5 @@ export function importEasternRoadPrices(database: Database): void {
       createHash("sha256").update(sourceText).digest("hex"),
       new Date().toISOString(),
     );
-    db.exec("COMMIT");
-  } catch (failure) {
-    db.exec("ROLLBACK");
-    throw failure;
-  }
+  });
 }

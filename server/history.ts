@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import type { ContactMethod, RequestHistory } from "../shared/contracts.js";
 import { contactIdentity, readContactIdentity } from "./domain/contact.js";
 import { HttpError } from "./errors.js";
-import type { Database } from "./infrastructure/database.js";
+import type { ApplicationDatabase as Database } from "./infrastructure/database.js";
 import type { CustomerEmail } from "./infrastructure/notifications/email.js";
 import type { Repository } from "./infrastructure/repository.js";
 

@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import { readFile } from "node:fs/promises";
 import { extname, resolve, sep } from "node:path";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { Database } from "./infrastructure/database.js";
+import type { ApplicationDatabase as Database } from "./infrastructure/database.js";
 import { HttpError } from "./errors.js";
 
 export function clientAddress(request: IncomingMessage, trustProxy: boolean): string {

@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "asa-ride",
+  "account_id": "66692fc206729324ef3ceef6fe959197",
+  "main": "worker/index.ts",
+  "tsconfig": "tsconfig.worker.json",
+  "compatibility_date": "2026-10-30",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "routes": [{ "pattern": "www.asa-express.com", "custom_domain": true }],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"],
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "BOOKINGS", "class_name": "BookingStore" }],
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BookingStore"] }],
+  "triggers": { "crons": ["* * * * *"] },
+  "vars": {
+    "NODE_ENV": "production",
+    "ASA_BOLT_PUBLIC_APP_URL": "https://www.asa-express.com",
+  },
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+}

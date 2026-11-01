@@ -219,6 +219,79 @@ when the app port cannot be accessed directly and that proxy appends/overwrites 
 Otherwise leave it `0`; forwarded headers are ignored. Same-origin API hosting is required for the
 HttpOnly, SameSite=Strict history cookie.
 
+## Cloudflare hosting
+
+Deploy Asa Ride in the personal Cloudflare account, using Workers for the frontend/API and a
+SQLite-backed Durable Object for the booking database. D1 was considered; Durable Objects preserve
+the existing synchronous SQL queries and atomic booking/notification transactions. The UI and
+pricing rules use the same application services as the local Node server.
+
+- Account: `yellow.may.21@gmail.com`, ID `66692fc206729324ef3ceef6fe959197`.
+- Worker: `asa-ride`; database binding: `BOOKINGS`; object name: `asa-ride-production`.
+- The first request imports the committed catalogue into persistent Cloudflare storage. Local
+  booking records are not uploaded. Keep the object name and SQLite class migration stable so
+  subsequent deployments continue using the same database.
+- Admin sessions are stored as hashed tokens with their existing eight-hour expiry. Signing out
+  deletes the session; changing the owner password invalidates sessions issued with the old password.
+- The scheduled handler runs maintenance every minute. Each API request also schedules maintenance
+  with `waitUntil`. Expiry checks continue to run during API requests. All sends retain the existing
+  delivery leases and idempotency keys. Scheduled processing has minute-level timing.
+- Cloudflare manages the database files. Node filesystem backups are disabled for this deployment;
+  use Cloudflare's Durable Object recovery tools and review the account's recovery retention. The
+  Node/Compose backup instructions below still apply to the local/persistent-host installation.
+
+### Deployment
+
+1. Run `npx wrangler whoami` and confirm the personal account above. The configuration pins its
+   account ID. Keep production credentials in the ignored private secrets file.
+2. Run the release build only when authorized. It refreshes `dist`, including SEO and `_headers`.
+   `npm run deploy:cloudflare -- --secrets-file .env.cloudflare.production` publishes the Worker
+   and static assets with secrets from that private JSON file. Values are never placed in `VITE_`
+   variables or committed. Secrets need to include the owner password, Resend configuration,
+   dispatch email, and OpenRouteService key. Optional integrations retain their current settings.
+3. Verify health, booking/fare lookup, admin access, and persistent changes on the Worker address.
+   Use the configured public origin for mutations until the domain cutover is complete.
+4. Add `asa-express.com` to the personal Cloudflare account on its free plan. Copy and verify the
+   existing web, mail, Resend, and verification DNS records before updating the registrar nameservers.
+   Attach `www.asa-express.com` as the Worker custom domain and redirect the apex to that origin.
+5. Verify the public health endpoint, browser flows, HTTPS, sender DNS, and scheduled maintenance
+   after propagation. Keep the previous Vercel deployment available during the domain transition.
+
+### Local manual checks
+
+`npm run dev:cloudflare` runs the Worker locally using `.dev.vars` and isolated storage under
+`.wrangler`. Set `NODE_ENV=development`, the exact local origin, a local admin password, and blank
+provider credentials in that file. Use a free port when other preview servers are running.
+
+Verification on 1 November 2026:
+
+- Local Chrome booking submission saved the quoted fare and pickup note. Admin acceptance saved
+  successfully. The booking and admin session survived a complete local Worker restart.
+- The authorized release build and ESLint passed. No automated tests or regression suite were run.
+- Production Worker `https://asa-ride.asa-bolt.workers.dev` returns health 200 and exposes 73 published
+  locations and 3,140 routes. Production admin sign-in passed. Version:
+  `213f4007-9a4c-4239-8e16-d7287086bae8`.
+- The production custom domain `https://www.asa-express.com` is connected and returns health 200.
+  Chrome loaded the booking form and displayed the Aba Road to Aba fare of ₦31,250 for 2 November 2026. Production admin login and authenticated list access passed on this domain. No production
+  bookings were created and no production notifications were sent during these checks.
+- The configured production origin is `https://www.asa-express.com`. Browser mutations on the
+  workers.dev preview remain restricted by that origin policy.
+- All ten existing application DNS records were copied from HostAfrica, including the two Resend
+  CNAMEs missed by Cloudflare's scan. The old www Vercel CNAME was replaced by the Worker custom
+  domain. Mail and FTP CNAMEs remain DNS-only. Public DKIM, DMARC, Google verification, Resend CNAMEs,
+  and MX records resolve after the cutover; this confirms DNS, not message delivery.
+- Registrar nameservers were changed to `ophelia.ns.cloudflare.com` and `west.ns.cloudflare.com`.
+  Both Cloudflare and Google public resolvers return them, and Cloudflare reports the zone active.
+  HostAfrica had no DNSSEC DS records. The enabled Cloudflare Single Redirect “Redirect apex to www”
+  matches `(http.host eq "asa-express.com")`, targets
+  `concat("https://www.asa-express.com", http.request.uri.path)`, uses 308, and preserves query strings.
+  Public HTTPS read-back verified that path and query preservation works. Keep the existing apex A
+  record: Cloudflare also uses its original address for the preserved legacy MX target.
+
+References: [Cloudflare SQLite storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/),
+[free plan limits](https://developers.cloudflare.com/durable-objects/platform/pricing/),
+[Node HTTP compatibility](https://developers.cloudflare.com/workers/runtime-apis/nodejs/http/).
+
 ## Back up and restore
 
 The app makes a verified SQLite snapshot at startup and every six hours when `ASA_BOLT_BACKUP_DIR`
